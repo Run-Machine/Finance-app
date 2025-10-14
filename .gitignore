@@ -9,6 +9,8 @@ build/
 coverage/
 .env
 .env.*
+package-lock.json
+yarn.lock
 
 # Netlify local state
 .netlify/
@@ -17,3 +19,4 @@ coverage/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log

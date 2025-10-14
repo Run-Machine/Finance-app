@@ -306,18 +306,39 @@ class DataManager {
     // --- Cross-device sync helpers (Netlify Functions + Blobs) ---
     async syncFromRemote() {
         try {
-            const res = await fetch(this.remoteReadUrl, { headers: { 'Cache-Control': 'no-store' } });
-            if (!res.ok) return;
+            const res = await fetch(this.remoteReadUrl, { 
+                headers: { 'Cache-Control': 'no-store' },
+                signal: AbortSignal.timeout(5000) // 5s timeout
+            });
+            if (!res.ok) {
+                console.debug('Remote sync read returned non-OK status:', res.status);
+                return;
+            }
             const payload = await res.json();
             if (payload && payload.ok && payload.data) {
-                // Overwrite local with remote snapshot
-                localStorage.setItem(this.storageKey, JSON.stringify(payload.data));
-                // Emit a lightweight custom event so UI can refresh if needed
-                document.dispatchEvent(new CustomEvent('app:data-synced'));
+                const currentData = this.getData();
+                const remoteDataStr = JSON.stringify(payload.data);
+                const currentDataStr = JSON.stringify(currentData);
+                
+                // Only update if remote is different from current
+                if (remoteDataStr !== currentDataStr) {
+                    localStorage.setItem(this.storageKey, remoteDataStr);
+                    console.log('✓ Remote data synced to local storage');
+                    // Emit event so UI can refresh
+                    document.dispatchEvent(new CustomEvent('app:data-synced'));
+                    // Show brief sync success indicator
+                    this.showSyncStatus('synced');
+                } else {
+                    console.debug('Local data is up to date');
+                }
             }
         } catch (err) {
-            // Remote may not be configured yet; fail silently
-            console.debug('Remote sync (read) skipped:', err?.message || err);
+            // Remote may not be configured yet or network issue; fail silently
+            if (err.name === 'TimeoutError') {
+                console.debug('Remote sync (read) timeout - using local data');
+            } else {
+                console.debug('Remote sync (read) skipped:', err?.message || err);
+            }
         }
     }
 
@@ -325,20 +346,42 @@ class DataManager {
         try {
             clearTimeout(this._syncTimer);
         } catch {}
-        this._syncTimer = setTimeout(() => this.syncToRemote(data), 400);
+        this._syncTimer = setTimeout(() => this.syncToRemote(data), 800);
     }
 
     async syncToRemote(data) {
-        try {
-            await fetch(this.remoteWriteUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data }),
-            });
-        } catch (err) {
-            // Ignore errors; local still works
-            console.debug('Remote sync (write) skipped:', err?.message || err);
+        let retries = 2;
+        while (retries >= 0) {
+            try {
+                const res = await fetch(this.remoteWriteUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data }),
+                    signal: AbortSignal.timeout(8000) // 8s timeout for write
+                });
+                if (res.ok) {
+                    console.log('✓ Data synced to remote storage');
+                    this.showSyncStatus('synced');
+                    return;
+                }
+                console.warn('Remote sync write returned non-OK:', res.status);
+                break;
+            } catch (err) {
+                retries--;
+                if (retries < 0) {
+                    // All retries exhausted; local still works
+                    console.debug('Remote sync (write) failed after retries:', err?.message || err);
+                } else {
+                    // Wait a bit before retry
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
         }
+    }
+
+    showSyncStatus(status) {
+        // Emit status for UI (optional visual indicator)
+        document.dispatchEvent(new CustomEvent('app:sync-status', { detail: { status } }));
     }
 
     // Event methods

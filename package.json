@@ -1,0 +1,15 @@
+{
+  "name": "vallamkonda-finance-app",
+  "version": "1.0.0",
+  "description": "Family event management system with cross-device sync",
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  },
+  "scripts": {
+    "dev": "netlify dev",
+    "deploy": "netlify deploy --prod"
+  },
+  "author": "Harsha Vallamkonda",
+  "license": "MIT"
+}
