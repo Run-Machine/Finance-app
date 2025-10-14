@@ -4,6 +4,10 @@
 class DataManager {
     constructor() {
         this.storageKey = 'vallamkonda-family-events-v2';
+        // Netlify Functions endpoints for cross-device sync
+        this.remoteReadUrl = '/.netlify/functions/get-data';
+        this.remoteWriteUrl = '/.netlify/functions/set-data';
+        this._syncTimer = null;
         this.init();
     }
 
@@ -12,6 +16,8 @@ class DataManager {
             this.setData(this.getDefaultData());
         }
         this.migrateData();
+        // Try to hydrate from remote in the background (non-blocking)
+        this.syncFromRemote();
     }
 
     getDefaultData() {
@@ -288,10 +294,50 @@ class DataManager {
     setData(data) {
         try {
             localStorage.setItem(this.storageKey, JSON.stringify(data));
+            // Fire-and-forget remote sync (debounced) so other devices see updates
+            this.queueRemoteSync(data);
             return true;
         } catch (error) {
             console.error('Error saving data:', error);
             return false;
+        }
+    }
+
+    // --- Cross-device sync helpers (Netlify Functions + Blobs) ---
+    async syncFromRemote() {
+        try {
+            const res = await fetch(this.remoteReadUrl, { headers: { 'Cache-Control': 'no-store' } });
+            if (!res.ok) return;
+            const payload = await res.json();
+            if (payload && payload.ok && payload.data) {
+                // Overwrite local with remote snapshot
+                localStorage.setItem(this.storageKey, JSON.stringify(payload.data));
+                // Emit a lightweight custom event so UI can refresh if needed
+                document.dispatchEvent(new CustomEvent('app:data-synced'));
+            }
+        } catch (err) {
+            // Remote may not be configured yet; fail silently
+            console.debug('Remote sync (read) skipped:', err?.message || err);
+        }
+    }
+
+    queueRemoteSync(data) {
+        try {
+            clearTimeout(this._syncTimer);
+        } catch {}
+        this._syncTimer = setTimeout(() => this.syncToRemote(data), 400);
+    }
+
+    async syncToRemote(data) {
+        try {
+            await fetch(this.remoteWriteUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data }),
+            });
+        } catch (err) {
+            // Ignore errors; local still works
+            console.debug('Remote sync (write) skipped:', err?.message || err);
         }
     }
 
@@ -534,6 +580,14 @@ class UIController {
         this.applySettingsToUI();
         this.setupVenueAutocomplete();
         this.setupSearchDebounce();
+
+        // When remote data hydrates, refresh key UI sections
+        document.addEventListener('app:data-synced', () => {
+            this.updateHeroStats();
+            this.renderEvents();
+            this.renderAnalytics();
+            this.applySettingsToUI();
+        });
     }
 
     setupEventListeners() {
