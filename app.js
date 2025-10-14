@@ -297,6 +297,10 @@ class DataManager {
 
     setData(data) {
         try {
+            // Stamp last-updated timestamp for conflict resolution across devices
+            if (data && typeof data === 'object') {
+                data.__updatedAt = Date.now();
+            }
             localStorage.setItem(this.storageKey, JSON.stringify(data));
             // Fire-and-forget remote sync (debounced) so other devices see updates
             this.queueRemoteSync(data);
@@ -327,19 +331,38 @@ class DataManager {
             
             if (payload && payload.ok && payload.data) {
                 const currentData = this.getData();
-                const remoteDataStr = JSON.stringify(payload.data);
-                const currentDataStr = JSON.stringify(currentData);
-                
-                // Only update if remote is different from current
-                if (remoteDataStr !== currentDataStr) {
-                    localStorage.setItem(this.storageKey, remoteDataStr);
-                    console.log('✅ Remote data synced to local storage (data was different)');
-                    // Emit event so UI can refresh
+                const remoteData = payload.data;
+                const localTs = currentData?.__updatedAt || 0;
+                const remoteTs = remoteData?.__updatedAt || 0;
+
+                if (!currentData) {
+                    // No local data yet; hydrate from remote
+                    localStorage.setItem(this.storageKey, JSON.stringify(remoteData));
+                    console.log('✅ Hydrated local storage from remote (no local data)');
                     document.dispatchEvent(new CustomEvent('app:data-synced'));
-                    // Show brief sync success indicator
                     this.showSyncStatus('synced');
+                } else if (remoteTs > localTs) {
+                    // Remote is newer; take remote
+                    localStorage.setItem(this.storageKey, JSON.stringify(remoteData));
+                    console.log('✅ Remote is newer; synced to local storage');
+                    document.dispatchEvent(new CustomEvent('app:data-synced'));
+                    this.showSyncStatus('synced');
+                } else if (localTs > remoteTs) {
+                    // Local is newer; push to remote
+                    console.log('ℹ️ Local is newer; pushing local snapshot to remote');
+                    this.queueRemoteSync(currentData);
                 } else {
-                    console.log('✅ Local data is already up to date');
+                    // Same timestamp; deep-compare to avoid unnecessary writes
+                    const remoteDataStr = JSON.stringify(remoteData);
+                    const currentDataStr = JSON.stringify(currentData);
+                    if (remoteDataStr !== currentDataStr) {
+                        localStorage.setItem(this.storageKey, remoteDataStr);
+                        console.log('✅ Synced from remote (same timestamp but different content)');
+                        document.dispatchEvent(new CustomEvent('app:data-synced'));
+                        this.showSyncStatus('synced');
+                    } else {
+                        console.log('✅ Local data is already up to date');
+                    }
                 }
             } else {
                 console.log('ℹ️ No remote data available yet - using local data');
@@ -1699,14 +1722,8 @@ class UIController {
                 reader.onload = (ev) => resolve(ev.target.result);
                 reader.readAsDataURL(file);
             }));
-            // Because FileReader is async, await them before proceeding
+            // Await all images before proceeding
             eventData.images = await Promise.all(readPromises);
-        }
-        
-        // Validate required fields
-        if (!eventData.name || !eventData.date || eventData.totalBudget < 0) {
-            this.showToast('Please fill in all required fields correctly', 'error');
-            return;
         }
         
         let success = false;
@@ -2191,70 +2208,6 @@ class UIController {
                                 const percentage = ((context.parsed / total) * 100).toFixed(1);
                                 return context.label + ': ₹' + context.parsed.toLocaleString() + ' (' + percentage + '%)';
                             }
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    renderPaymentChart() {
-        const ctx = document.getElementById('paymentChart').getContext('2d');
-        const events = this.dataManager.getEvents();
-        
-        const paymentModes = {};
-        events.forEach(event => {
-            [...event.expenses, ...event.income].forEach(transaction => {
-                paymentModes[transaction.paymentMode] = (paymentModes[transaction.paymentMode] || 0) + transaction.amount;
-            });
-        });
-        
-        if (this.charts.payment) {
-            this.charts.payment.destroy();
-        }
-        
-        this.charts.payment = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: Object.keys(paymentModes),
-                datasets: [{
-                    label: 'Transaction Amount',
-                    data: Object.values(paymentModes),
-                    backgroundColor: '#3b82f6',
-                    borderRadius: 8,
-                    borderSkipped: false
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return 'Total: ₹' + context.parsed.y.toLocaleString();
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) {
-                                return '₹' + value.toLocaleString();
-                            }
-                        },
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
                         }
                     }
                 }

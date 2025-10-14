@@ -47,12 +47,19 @@ export default async (req, context) => {
       siteID: context.site?.id || 'local'
     });
     
-    // Store as JSON string
-    await store.set('data.json', JSON.stringify(body.data), { 
-      metadata: { 
+    // Ensure a timestamp exists for conflict resolution
+    const payload = { ...body.data };
+    if (typeof payload === 'object' && payload && !payload.__updatedAt) {
+      payload.__updatedAt = Date.now();
+    }
+
+    // Store as JSON string with explicit content type
+    await store.set('data.json', JSON.stringify(payload), {
+      contentType: 'application/json',
+      metadata: {
         updatedAt: Date.now(),
         version: body.data.settings?.version || '1.0.0'
-      } 
+      }
     });
 
     console.log('POST request - Data saved successfully');
