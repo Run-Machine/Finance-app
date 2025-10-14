@@ -17,7 +17,11 @@ class DataManager {
         }
         this.migrateData();
         // Try to hydrate from remote in the background (non-blocking)
-        this.syncFromRemote();
+        // Add a small delay to ensure page is loaded
+        setTimeout(() => {
+            console.log('🔄 Attempting to sync from remote...');
+            this.syncFromRemote();
+        }, 500);
     }
 
     getDefaultData() {
@@ -306,15 +310,21 @@ class DataManager {
     // --- Cross-device sync helpers (Netlify Functions + Blobs) ---
     async syncFromRemote() {
         try {
+            console.log('📥 Fetching data from remote...');
             const res = await fetch(this.remoteReadUrl, { 
                 headers: { 'Cache-Control': 'no-store' },
                 signal: AbortSignal.timeout(5000) // 5s timeout
             });
+            
+            console.log('📡 Remote response status:', res.status);
+            
             if (!res.ok) {
-                console.debug('Remote sync read returned non-OK status:', res.status);
+                console.warn('⚠️ Remote sync read returned non-OK status:', res.status);
                 return;
             }
             const payload = await res.json();
+            console.log('📦 Received payload:', payload?.ok ? 'Valid' : 'Invalid', payload?.data ? 'Has data' : 'No data');
+            
             if (payload && payload.ok && payload.data) {
                 const currentData = this.getData();
                 const remoteDataStr = JSON.stringify(payload.data);
@@ -323,21 +333,25 @@ class DataManager {
                 // Only update if remote is different from current
                 if (remoteDataStr !== currentDataStr) {
                     localStorage.setItem(this.storageKey, remoteDataStr);
-                    console.log('✓ Remote data synced to local storage');
+                    console.log('✅ Remote data synced to local storage (data was different)');
                     // Emit event so UI can refresh
                     document.dispatchEvent(new CustomEvent('app:data-synced'));
                     // Show brief sync success indicator
                     this.showSyncStatus('synced');
                 } else {
-                    console.debug('Local data is up to date');
+                    console.log('✅ Local data is already up to date');
                 }
+            } else {
+                console.log('ℹ️ No remote data available yet - using local data');
             }
         } catch (err) {
             // Remote may not be configured yet or network issue; fail silently
-            if (err.name === 'TimeoutError') {
-                console.debug('Remote sync (read) timeout - using local data');
+            if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+                console.warn('⏱️ Remote sync (read) timeout - using local data');
+            } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                console.warn('🌐 Network error - using local data (are you on Netlify URL?)');
             } else {
-                console.debug('Remote sync (read) skipped:', err?.message || err);
+                console.warn('ℹ️ Remote sync (read) skipped:', err?.message || err);
             }
         }
     }
@@ -346,32 +360,46 @@ class DataManager {
         try {
             clearTimeout(this._syncTimer);
         } catch {}
-        this._syncTimer = setTimeout(() => this.syncToRemote(data), 800);
+        this._syncTimer = setTimeout(() => {
+            console.log('⏳ Debounce complete - starting remote sync...');
+            this.syncToRemote(data);
+        }, 800);
     }
 
     async syncToRemote(data) {
         let retries = 2;
         while (retries >= 0) {
             try {
+                console.log(`📤 Sending data to remote... (attempt ${3 - retries}/3)`);
                 const res = await fetch(this.remoteWriteUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ data }),
                     signal: AbortSignal.timeout(8000) // 8s timeout for write
                 });
+                
+                console.log('📡 Remote write response status:', res.status);
+                
                 if (res.ok) {
-                    console.log('✓ Data synced to remote storage');
+                    const result = await res.json();
+                    console.log('✅ Data synced to remote storage successfully!', result);
                     this.showSyncStatus('synced');
                     return;
                 }
-                console.warn('Remote sync write returned non-OK:', res.status);
+                console.warn('⚠️ Remote sync write returned non-OK:', res.status);
+                const errorBody = await res.text();
+                console.warn('Error details:', errorBody);
                 break;
             } catch (err) {
                 retries--;
                 if (retries < 0) {
                     // All retries exhausted; local still works
-                    console.debug('Remote sync (write) failed after retries:', err?.message || err);
+                    console.error('❌ Remote sync (write) failed after all retries:', err?.message || err);
+                    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                        console.error('🌐 Network error - are you on the Netlify URL?');
+                    }
                 } else {
+                    console.warn(`🔄 Retry ${3 - retries} failed, waiting before retry...`);
                     // Wait a bit before retry
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }

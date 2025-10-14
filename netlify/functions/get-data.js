@@ -19,8 +19,14 @@ export default async (req, context) => {
   }
 
   try {
-    const store = getStore('app-data');
+    const store = getStore({
+      name: 'app-data',
+      siteID: context.site?.id || 'local'
+    });
+    
     const data = await store.get('data.json', { type: 'json' });
+    
+    console.log('GET request - Data retrieved:', data ? 'Found' : 'Empty');
     
     return new Response(JSON.stringify({ ok: true, data: data || null }), {
       headers,

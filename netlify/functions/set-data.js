@@ -42,13 +42,20 @@ export default async (req, context) => {
       });
     }
 
-    const store = getStore('app-data');
+    const store = getStore({
+      name: 'app-data',
+      siteID: context.site?.id || 'local'
+    });
+    
+    // Store as JSON string
     await store.set('data.json', JSON.stringify(body.data), { 
       metadata: { 
         updatedAt: Date.now(),
         version: body.data.settings?.version || '1.0.0'
       } 
     });
+
+    console.log('POST request - Data saved successfully');
 
     return new Response(JSON.stringify({ ok: true, synced: true }), {
       headers,
