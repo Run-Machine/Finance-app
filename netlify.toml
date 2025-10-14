@@ -1,0 +1,25 @@
+[build]
+  publish = "."
+
+# Optional: serve index.html for unknown routes (safe even with hash links)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Basic caching headers for static assets
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Avoid caching HTML so updates are visible immediately
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
