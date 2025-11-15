@@ -1,2502 +1,1319 @@
-// Enhanced Family Event Management System
-// Firestore CRUD only (Google Sheets removed)
-// All existing functionality preserved
-import { 
-    collection, addDoc, doc, setDoc, getDocs, getDoc, query, where
-} from "firebase/firestore";
-import { db } from "./firebase-config.js";
-
-// --- Firestore helpers (events collection) ---
-async function saveEvent(eventData) {
-    // Creates a new event document with auto-id and returns its id
-    const colRef = collection(db, "events");
-    const payload = { ...eventData, localId: eventData?.id ?? null, __updatedAt: Date.now() };
-    const docRef = await addDoc(colRef, payload);
-    return docRef.id;
+// --- Storage Helper Functions (localStorage only, no Firebase) ---
+function saveToLocalStorage() {
+    const data = {
+        events: window.app?.dataManager?.getEvents?.() || [],
+        timestamp: new Date().toISOString()
+    };
+    localStorage.setItem("vallamkonda_finance_data", JSON.stringify(data));
 }
 
-async function loadEvents() {
-    // Loads all events from Firestore, returns array of { firestoreId, ...data }
-    const snap = await getDocs(collection(db, "events"));
-    return snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+function loadFromLocalStorage() {
+    const data = localStorage.getItem("vallamkonda_finance_data");
+    return data ? JSON.parse(data).events : [];
 }
 
-async function updateEventRemoteByLocalId(localId, updatedData) {
-    // Updates Firestore doc whose id equals the provided localId
+// Smooth scroll helper used by header CTA buttons in `index.html`
+function scrollToSection(sectionId) {
     try {
-        const ref = doc(db, "events", String(localId));
-        const snap = await getDoc(ref);
-        if (!snap.exists()) return false;
-        await setDoc(ref, { ...updatedData, __updatedAt: Date.now() }, { merge: true });
-        return true;
-    } catch (e) {
-        console.warn('Firestore update by id failed:', e?.message || e);
-        return false;
+        const el = document.getElementById(sectionId);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        // update nav active state if nav links exist
+        document.querySelectorAll('.nav__link').forEach(link => {
+            if (link.dataset && link.dataset.section === sectionId) {
+                link.classList.add('active');
+            } else {
+                link.classList.remove('active');
+            }
+        });
+    } catch (err) {
+        console.error('scrollToSection error:', err);
     }
 }
+// expose globally so inline onclick in index.html can call it
+window.scrollToSection = scrollToSection;
 
+// --- Constants and Default Data ---
+const ADMIN_PASSWORD = "vallamkonda@2025";
+const DEFAULT_SETTINGS = {
+    siteName: "Vallamkonda Finance & Events",
+    tagline: "Conscious intelligence in motion",
+    designedBy: "Harsha Vallamkonda",
+    partneredWith: "Sunday Saradalu"
+};
+
+const DEFAULT_EVENT_CATEGORIES = [
+    "Food", "Decor", "Entertainment", "Venue", "Travel", "Gifts", "Photography", "Miscellaneous"
+];
+
+const DEFAULT_PAYMENT_MODES = [
+    "Cash", "UPI", "Bank Transfer", "Credit Card", "Debit Card"
+];
+
+const DEFAULT_ACTIVITY_CATEGORIES = [
+    "Cultural", "Games", "Food", "Ceremony", "Outdoor", "Indoor"
+];
+
+const DEFAULT_FAMILIES = [
+    {
+        id: "fam1",
+        name: "Vallamkonda Main Family",
+        contactPerson: "Harsha Vallamkonda",
+        phone: "+91-9876543210",
+        email: "harsha.vallamkonda@example.com",
+        address: "123 Family Lane, Hyderabad, India",
+        members: 5
+    },
+    {
+        id: "fam2",
+        name: "Kumar Family",
+        contactPerson: "Rajesh Kumar",
+        phone: "+91-9876543211",
+        email: "rajesh.kumar@example.com",
+        address: "456 Green Street, Bangalore, India",
+        members: 4
+    },
+    {
+        id: "fam3",
+        name: "Sharma Family",
+        contactPerson: "Priya Sharma",
+        phone: "+91-9876543212",
+        email: "priya.sharma@example.com",
+        address: "789 Lake View, Chennai, India",
+        members: 3
+    },
+    {
+        id: "fam4",
+        name: "Patel Family",
+        contactPerson: "Amit Patel",
+        phone: "+91-9876543213",
+        email: "amit.patel@example.com",
+        address: "101 Mountain Road, Mumbai, India",
+        members: 6
+    }
+];
+
+// Placeholder for default events if Firestore is empty. Will be added if no data exists.
+const DEFAULT_EVENTS = [
+    {
+        name: "Diwali Celebration 2024",
+        year: 2024,
+        date: "2024-11-01",
+        description: "Traditional Diwali celebration with the entire family including rangoli competition, traditional games, and grand feast",
+        totalBudget: 150000,
+        status: "upcoming",
+        venue: "Family Ancestral Home",
+        expectedGuests: 45,
+        googlePhotosLink: "https://photos.google.com/share/AF1QipNi_example",
+        expenses: [
+            {
+                id: "exp1",
+                category: "Decor",
+                amount: 25000,
+                paymentMode: "UPI",
+                description: "Rangoli materials, diyas, lights, and floral decorations",
+                date: "2024-10-25",
+                vendor: "Laxmi Decorators"
+            },
+            {
+                id: "exp2",
+                category: "Food",
+                amount: 40000,
+                paymentMode: "Cash",
+                description: "Sweets, traditional dishes, snacks, and beverages",
+                date: "2024-10-30",
+                vendor: "Raj Caterers"
+            },
+            {
+                id: "exp3",
+                category: "Entertainment",
+                amount: 15000,
+                paymentMode: "Bank Transfer",
+                description: "DJ, sound system, and traditional music instruments",
+                date: "2024-11-01",
+                vendor: "Sound Masters"
+            }
+        ],
+        income: [
+            {
+                id: "inc1",
+                family: "Vallamkonda Main Family",
+                amount: 50000,
+                paymentMode: "Bank Transfer",
+                date: "2024-10-20",
+                contactPerson: "Harsha Vallamkonda",
+                phone: "+91-9876543210"
+            },
+            {
+                id: "inc2",
+                family: "Kumar Family",
+                amount: 30000,
+                paymentMode: "UPI",
+                date: "2024-10-22",
+                contactPerson: "Rajesh Kumar",
+                phone: "+91-9876543211"
+            },
+            {
+                id: "inc3",
+                family: "Sharma Family",
+                amount: 25000,
+                paymentMode: "Cash",
+                date: "2024-10-25",
+                contactPerson: "Priya Sharma",
+                phone: "+91-9876543212"
+            }
+        ],
+        activities: [
+            {
+                id: "act1",
+                name: "Lakshmi Puja",
+                participants: "All family members",
+                time: "18:00",
+                duration: "1 hour",
+                description: "Traditional prayer ceremony with aarti and prasad distribution",
+                location: "Main Prayer Room",
+                incharge: "Elder Family Members"
+            },
+            {
+                id: "act2",
+                name: "Rangoli Competition",
+                participants: "Kids and teenagers",
+                time: "16:00",
+                duration: "2 hours",
+                description: "Creative rangoli making competition with prizes",
+                location: "Front Courtyard",
+                incharge: "Art Committee"
+            },
+            {
+                id: "act3",
+                name: "Cultural Dance Performance",
+                participants: "Youth group",
+                time: "20:00",
+                duration: "45 minutes",
+                description: "Classical and folk dance performances",
+                location: "Main Hall",
+                incharge: "Cultural Team"
+            }
+        ]
+    },
+    {
+        name: "Summer Family Reunion 2024",
+        year: 2024,
+        date: "2024-05-15",
+        description: "Annual summer gathering with outdoor activities, games, and family bonding sessions",
+        totalBudget: 120000,
+        status: "completed",
+        venue: "Hill View Resort",
+        expectedGuests: 38,
+        googlePhotosLink: "https://photos.google.com/share/AF1QipNi_example2",
+        expenses: [
+            {
+                id: "exp4",
+                category: "Venue",
+                amount: 45000,
+                paymentMode: "Bank Transfer",
+                description: "Resort booking for 2 days including accommodation",
+                date: "2024-05-01",
+                vendor: "Hill View Resort"
+            },
+            {
+                id: "exp5",
+                category: "Food",
+                amount: 35000,
+                paymentMode: "UPI",
+                description: "BBQ, outdoor catering, and refreshments",
+                date: "2024-05-14",
+                vendor: "Outdoor Feast"
+            }
+        ],
+        income: [
+            {
+                id: "inc4",
+                family: "Vallamkonda Main Family",
+                amount: 40000,
+                paymentMode: "Bank Transfer",
+                date: "2024-05-01",
+                contactPerson: "Harsha Vallamkonda",
+                phone: "+91-9876543210"
+            },
+            {
+                id: "inc5",
+                family: "Patel Family",
+                amount: 35000,
+                paymentMode: "UPI",
+                date: "2024-05-05",
+                contactPerson: "Amit Patel",
+                phone: "+91-9876543213"
+            }
+        ],
+        activities: [
+            {
+                id: "act4",
+                name: "Outdoor Games Tournament",
+                participants: "All ages",
+                time: "10:00",
+                duration: "3 hours",
+                description: "Cricket, volleyball, badminton, and traditional games",
+                location: "Resort Grounds",
+                incharge: "Sports Committee"
+            },
+            {
+                id: "act5",
+                name: "Swimming & Water Games",
+                participants: "Kids and adults",
+                time: "14:00",
+                duration: "2 hours",
+                description: "Pool activities, water volleyball, and swimming races",
+                location: "Resort Pool",
+                incharge: "Aqua Team"
+            }
+        ]
+    }
+];
 
 class DataManager {
     constructor() {
-        this.storageKey = 'vallamkonda-family-events-v2';
-        this._syncTimer = null;
-        this.init();
+        this.events = [];
+        this.families = DEFAULT_FAMILIES;
+        this.expenseCategories = DEFAULT_EVENT_CATEGORIES;
+        this.paymentModes = DEFAULT_PAYMENT_MODES;
+        this.activityCategories = DEFAULT_ACTIVITY_CATEGORIES;
+        this.settings = DEFAULT_SETTINGS;
+        this.adminPassword = ADMIN_PASSWORD;
+        this.onDataChangeCallback = null; // Callback for real-time updates
     }
 
-    init() {
-        if (!this.getData()) {
-            this.setData(this.getDefaultData());
-        }
-        this.migrateData();
-    }
-
-    getDefaultData() {
-        return {
-            settings: {
-                adminPassword: "vallamkonda@2025",
-                siteName: "Vallamkonda Finance & Events",
-                tagline: "Conscious intelligence in motion",
-                theme: "light",
-                designedBy: "Harsha Vallamkonda",
-                partneredWith: "Sunday Saradalu"
-            },
-            events: [
-                {
-                    id: 1,
-                    name: "Diwali Celebration 2024",
-                    year: 2024,
-                    date: "2024-11-01",
-                    description: "Traditional Diwali celebration with the entire family including rangoli competition, traditional games, and grand feast",
-                    totalBudget: 150000,
-                    status: "upcoming",
-                    venue: "Family Ancestral Home",
-                    expectedGuests: 45,
-                    googlePhotosLink: "https://photos.google.com/share/AF1QipNi_example",
-                    expenses: [
-                        {
-                            id: 1,
-                            category: "Decor",
-                            amount: 25000,
-                            paymentMode: "UPI",
-                            description: "Rangoli materials, diyas, lights, and floral decorations",
-                            date: "2024-10-25",
-                            vendor: "Laxmi Decorators"
-                        },
-                        {
-                            id: 2,
-                            category: "Food",
-                            amount: 40000,
-                            paymentMode: "Cash",
-                            description: "Sweets, traditional dishes, snacks, and beverages",
-                            date: "2024-10-30",
-                            vendor: "Raj Caterers"
-                        },
-                        {
-                            id: 3,
-                            category: "Entertainment",
-                            amount: 15000,
-                            paymentMode: "Bank Transfer",
-                            description: "DJ, sound system, and traditional music instruments",
-                            date: "2024-11-01",
-                            vendor: "Sound Masters"
-                        }
-                    ],
-                    income: [
-                        {
-                            id: 1,
-                            family: "Vallamkonda Main Family",
-                            amount: 50000,
-                            paymentMode: "Bank Transfer",
-                            date: "2024-10-20",
-                            contactPerson: "Harsha Vallamkonda",
-                            phone: "+91-9876543210"
-                        },
-                        {
-                            id: 2,
-                            family: "Kumar Family",
-                            amount: 30000,
-                            paymentMode: "UPI",
-                            date: "2024-10-22",
-                            contactPerson: "Rajesh Kumar",
-                            phone: "+91-9876543211"
-                        },
-                        {
-                            id: 3,
-                            family: "Sharma Family",
-                            amount: 25000,
-                            paymentMode: "Cash",
-                            date: "2024-10-25",
-                            contactPerson: "Priya Sharma",
-                            phone: "+91-9876543212"
-                        }
-                    ],
-                    activities: [
-                        {
-                            id: 1,
-                            name: "Lakshmi Puja",
-                            participants: "All family members",
-                            time: "18:00",
-                            duration: "1 hour",
-                            description: "Traditional prayer ceremony with aarti and prasad distribution",
-                            location: "Main Prayer Room",
-                            incharge: "Elder Family Members"
-                        },
-                        {
-                            id: 2,
-                            name: "Rangoli Competition",
-                            participants: "Kids and teenagers",
-                            time: "16:00",
-                            duration: "2 hours",
-                            description: "Creative rangoli making competition with prizes",
-                            location: "Front Courtyard",
-                            incharge: "Art Committee"
-                        },
-                        {
-                            id: 3,
-                            name: "Cultural Dance Performance",
-                            participants: "Youth group",
-                            time: "20:00",
-                            duration: "45 minutes",
-                            description: "Classical and folk dance performances",
-                            location: "Main Hall",
-                            incharge: "Cultural Team"
-                        }
-                    ]
-                },
-                {
-                    id: 2,
-                    name: "Summer Family Reunion 2024",
-                    year: 2024,
-                    date: "2024-05-15",
-                    description: "Annual summer gathering with outdoor activities, games, and family bonding sessions",
-                    totalBudget: 120000,
-                    status: "completed",
-                    venue: "Hill View Resort",
-                    expectedGuests: 38,
-                    googlePhotosLink: "https://photos.google.com/share/AF1QipNi_example2",
-                    expenses: [
-                        {
-                            id: 4,
-                            category: "Venue",
-                            amount: 45000,
-                            paymentMode: "Bank Transfer",
-                            description: "Resort booking for 2 days including accommodation",
-                            date: "2024-05-01",
-                            vendor: "Hill View Resort"
-                        },
-                        {
-                            id: 5,
-                            category: "Food",
-                            amount: 35000,
-                            paymentMode: "UPI",
-                            description: "BBQ, outdoor catering, and refreshments",
-                            date: "2024-05-14",
-                            vendor: "Outdoor Feast"
-                        }
-                    ],
-                    income: [
-                        {
-                            id: 4,
-                            family: "Vallamkonda Main Family",
-                            amount: 40000,
-                            paymentMode: "Bank Transfer",
-                            date: "2024-05-01",
-                            contactPerson: "Harsha Vallamkonda",
-                            phone: "+91-9876543210"
-                        },
-                        {
-                            id: 5,
-                            family: "Patel Family",
-                            amount: 35000,
-                            paymentMode: "UPI",
-                            date: "2024-05-05",
-                            contactPerson: "Amit Patel",
-                            phone: "+91-9876543213"
-                        }
-                    ],
-                    activities: [
-                        {
-                            id: 4,
-                            name: "Outdoor Games Tournament",
-                            participants: "All ages",
-                            time: "10:00",
-                            duration: "3 hours",
-                            description: "Cricket, volleyball, badminton, and traditional games",
-                            location: "Resort Grounds",
-                            incharge: "Sports Committee"
-                        },
-                        {
-                            id: 5,
-                            name: "Swimming & Water Games",
-                            participants: "Kids and adults",
-                            time: "14:00",
-                            duration: "2 hours",
-                            description: "Pool activities, water volleyball, and swimming races",
-                            location: "Resort Pool",
-                            incharge: "Aqua Team"
-                        }
-                    ]
-                }
-            ],
-            families: [
-                {
-                    id: 1,
-                    name: "Vallamkonda Main Family",
-                    contactPerson: "Harsha Vallamkonda",
-                    phone: "+91-9876543210",
-                    email: "harsha@vallamkonda.com",
-                    members: 6,
-                    address: "Nandyala, AP"
-                },
-                {
-                    id: 2,
-                    name: "Kumar Family",
-                    contactPerson: "Rajesh Kumar",
-                    phone: "+91-9876543211",
-                    email: "rajesh@kumar.com",
-                    members: 4,
-                    address: "Hyderabad, TS"
-                },
-                {
-                    id: 3,
-                    name: "Sharma Family",
-                    contactPerson: "Priya Sharma",
-                    phone: "+91-9876543212",
-                    email: "priya@sharma.com",
-                    members: 5,
-                    address: "Bangalore, KA"
-                },
-                {
-                    id: 4,
-                    name: "Patel Family",
-                    contactPerson: "Amit Patel",
-                    phone: "+91-9876543213",
-                    email: "amit@patel.com",
-                    members: 7,
-                    address: "Mumbai, MH"
-                }
-            ],
-            expenseCategories: [
-                "Food", "Decor", "Entertainment", "Venue", "Transportation", 
-                "Photography", "Gifts", "Electrician", "Security", "Miscellaneous"
-            ],
-            paymentModes: [
-                "Cash", "UPI", "Bank Transfer", "Credit Card", "Debit Card", "Online Payment", "Cheque"
-            ],
-            activityCategories: [
-                "Religious", "Entertainment", "Sports", "Cultural", "Food", "Games", "Photography", "Social"
-            ]
-        };
-    }
-
-    migrateData() {
-        const data = this.getData();
-        let updated = false;
-
-        // Ensure all events have required fields
-        if (data.events) {
-            data.events.forEach(event => {
-                if (!event.venue) event.venue = "Not specified";
-                if (!event.expectedGuests) event.expectedGuests = 0;
-                if (!event.status) event.status = "upcoming";
-                if (!event.expenses) event.expenses = [];
-                if (!event.income) event.income = [];
-                if (!event.activities) event.activities = [];
-                updated = true;
-            });
-        }
-
-        if (updated) {
-            this.setData(data);
-        }
-    }
-
-    getData() {
-        try {
-            const data = localStorage.getItem(this.storageKey);
-            return data ? JSON.parse(data) : null;
-        } catch (error) {
-            console.error('Error reading data:', error);
-            return null;
-        }
-    }
-
-    setData(data) {
-        try {
-            // Stamp last-updated timestamp for conflict resolution
-            if (data && typeof data === 'object') {
-                data.__updatedAt = Date.now();
-            }
-            localStorage.setItem(this.storageKey, JSON.stringify(data));
-            return true;
-        } catch (error) {
-            console.error('Error saving data:', error);
-            return false;
-        }
-    }
-
-    showSyncStatus(status) {
-        // Emit status for UI (optional visual indicator)
-        document.dispatchEvent(new CustomEvent('app:sync-status', { detail: { status } }));
-    }
-
-    // Event methods
-    getEvents() {
-        return this.getData()?.events || [];
-    }
-
-    getEvent(id) {
-        const events = this.getEvents();
-        return events.find(event => event.id === parseInt(id));
-    }
-
-    addEvent(eventData) {
-        const data = this.getData();
-        const newEvent = {
-            ...eventData,
-            // Preserve id if already assigned (e.g., Firestore id injected into data)
-            id: eventData.id ?? Date.now(),
-            expenses: [],
-            income: [],
-            activities: [],
-            images: eventData.images || [],
-            status: new Date(eventData.date) > new Date() ? "upcoming" : "completed"
-        };
+    async loadInitialData() {
+        console.log("Loading initial data from localStorage...");
         
-        data.events.push(newEvent);
-        this.setData(data);
+        // Try to load from localStorage first
+        const savedEvents = loadFromLocalStorage();
+        
+        if (savedEvents && savedEvents.length > 0) {
+            this.events = savedEvents;
+            console.log("Events loaded from localStorage:", this.events);
+        } else {
+            console.log("No events in localStorage, using default events.");
+            this.events = DEFAULT_EVENTS.map(event => ({ 
+                ...event, 
+                id: event.id || this.generateUniqueId() 
+            }));
+            // Auto-save defaults
+            saveToLocalStorage();
+        }
+    }
+
+    // Event CRUD Operations
+    getEvents() {
+        return this.events;
+    }
+
+    getEventById(id) {
+        return this.events.find(event => event.id === id);
+    }
+
+    async addEvent(newEvent) {
+        // Assign unique IDs to sub-items
+        if (newEvent.expenses) newEvent.expenses = newEvent.expenses.map(exp => ({ ...exp, id: exp.id || this.generateUniqueId() }));
+        if (newEvent.income) newEvent.income = newEvent.income.map(inc => ({ ...inc, id: inc.id || this.generateUniqueId() }));
+        if (newEvent.activities) newEvent.activities = newEvent.activities.map(act => ({ ...act, id: act.id || this.generateUniqueId() }));
+
+        // Assign ID if not present
+        newEvent.id = newEvent.id || this.generateUniqueId();
+        newEvent.createdAt = new Date().toISOString();
+        
+        this.events.push(newEvent);
+        saveToLocalStorage();
+        
+        if (this.onDataChangeCallback) this.onDataChangeCallback();
         return newEvent;
     }
 
-    updateEvent(id, updatedData) {
-        const data = this.getData();
-        const eventIndex = data.events.findIndex(event => event.id === parseInt(id));
-        
-        if (eventIndex !== -1) {
-            // Merge images arrays if provided
-            if (updatedData.images) {
-                data.events[eventIndex].images = updatedData.images;
-                delete updatedData.images;
+    async updateEvent(updatedEvent) {
+        // Ensure sub-item IDs are present
+        if (updatedEvent.expenses) updatedEvent.expenses = updatedEvent.expenses.map(exp => ({ ...exp, id: exp.id || this.generateUniqueId() }));
+        if (updatedEvent.income) updatedEvent.income = updatedEvent.income.map(inc => ({ ...inc, id: inc.id || this.generateUniqueId() }));
+        if (updatedEvent.activities) updatedEvent.activities = updatedEvent.activities.map(act => ({ ...act, id: act.id || this.generateUniqueId() }));
+
+        const index = this.events.findIndex(e => e.id === updatedEvent.id);
+        if (index !== -1) {
+            updatedEvent.updatedAt = new Date().toISOString();
+            this.events[index] = { ...this.events[index], ...updatedEvent };
+            saveToLocalStorage();
+            if (this.onDataChangeCallback) this.onDataChangeCallback();
+            return true;
+        }
+        return false;
+    }
+
+    async deleteEvent(id) {
+        const index = this.events.findIndex(e => e.id === id);
+        if (index !== -1) {
+            this.events.splice(index, 1);
+            saveToLocalStorage();
+            if (this.onDataChangeCallback) this.onDataChangeCallback();
+        }
+    }
+
+    // Expense, Income, Activity CRUD Operations (delegated to updateEvent)
+    async addSubItem(eventId, itemType, newItem) {
+        const event = this.getEventById(eventId);
+        if (event) {
+            newItem.id = this.generateUniqueId();
+            const updatedEvent = { ...event, [itemType]: [...(event[itemType] || []), newItem] };
+            await this.updateEvent(updatedEvent);
+            return newItem;
+        }
+        return null;
+    }
+
+    async updateSubItem(eventId, itemType, updatedItem) {
+        const event = this.getEventById(eventId);
+        if (event) {
+            const items = event[itemType] || [];
+            const index = items.findIndex(item => item.id === updatedItem.id);
+            if (index !== -1) {
+                const newItems = [...items];
+                newItems[index] = { ...newItems[index], ...updatedItem };
+                const updatedEvent = { ...event, [itemType]: newItems };
+                await this.updateEvent(updatedEvent);
+                return true;
             }
-            data.events[eventIndex] = { ...data.events[eventIndex], ...updatedData };
-            this.setData(data);
-            return data.events[eventIndex];
-        }
-        return null;
-    }
-
-    deleteEvent(id) {
-        const data = this.getData();
-        const initialLength = data.events.length;
-        data.events = data.events.filter(event => event.id !== parseInt(id));
-        
-        if (data.events.length < initialLength) {
-            this.setData(data);
-            return true;
         }
         return false;
     }
 
-    // Finance methods
-    addExpense(eventId, expenseData) {
-        const data = this.getData();
-        const event = data.events.find(e => e.id === parseInt(eventId));
-        
+    async deleteSubItem(eventId, itemType, itemId) {
+        const event = this.getEventById(eventId);
         if (event) {
-            const newExpense = {
-                ...expenseData,
-                id: Date.now(),
-                amount: parseFloat(expenseData.amount)
-            };
-            event.expenses.push(newExpense);
-            this.setData(data);
-            return newExpense;
+            const updatedEvent = { ...event, [itemType]: (event[itemType] || []).filter(item => item.id !== itemId) };
+            await this.updateEvent(updatedEvent);
         }
-        return null;
     }
 
-    updateExpense(eventId, expenseId, updatedData) {
-        const data = this.getData();
-        const event = data.events.find(e => e.id === parseInt(eventId));
-        if (!event) return null;
-        const idx = event.expenses.findIndex(exp => exp.id === parseInt(expenseId));
-        if (idx === -1) return null;
-        event.expenses[idx] = { ...event.expenses[idx], ...updatedData };
-        this.setData(data);
-        return event.expenses[idx];
-    }
-
-    addIncome(eventId, incomeData) {
-        const data = this.getData();
-        const event = data.events.find(e => e.id === parseInt(eventId));
-        
-        if (event) {
-            const newIncome = {
-                ...incomeData,
-                id: Date.now(),
-                amount: parseFloat(incomeData.amount)
-            };
-            event.income.push(newIncome);
-            this.setData(data);
-            return newIncome;
-        }
-        return null;
-    }
-
-    updateIncome(eventId, incomeId, updatedData) {
-        const data = this.getData();
-        const event = data.events.find(e => e.id === parseInt(eventId));
-        if (!event) return null;
-        const idx = event.income.findIndex(inc => inc.id === parseInt(incomeId));
-        if (idx === -1) return null;
-        event.income[idx] = { ...event.income[idx], ...updatedData };
-        this.setData(data);
-        return event.income[idx];
-    }
-
-    deleteFinanceItem(eventId, itemType, itemId) {
-        const data = this.getData();
-        const event = data.events.find(e => e.id === parseInt(eventId));
-        
-        if (event) {
-            if (itemType === 'expense') {
-                event.expenses = event.expenses.filter(expense => expense.id !== parseInt(itemId));
-            } else if (itemType === 'income') {
-                event.income = event.income.filter(income => income.id !== parseInt(itemId));
-            }
-            this.setData(data);
-            return true;
-        }
-        return false;
-    }
-
-    // Activity methods
-    addActivity(eventId, activityData) {
-        const data = this.getData();
-        const event = data.events.find(e => e.id === parseInt(eventId));
-        
-        if (event) {
-            const newActivity = {
-                ...activityData,
-                id: Date.now()
-            };
-            event.activities.push(newActivity);
-            this.setData(data);
-            return newActivity;
-        }
-        return null;
-    }
-
-    updateActivity(eventId, activityId, updatedData) {
-        const data = this.getData();
-        const event = data.events.find(e => e.id === parseInt(eventId));
-        if (!event) return null;
-        const idx = event.activities.findIndex(a => a.id === parseInt(activityId));
-        if (idx === -1) return null;
-        event.activities[idx] = { ...event.activities[idx], ...updatedData };
-        this.setData(data);
-        return event.activities[idx];
-    }
-
-    deleteActivity(eventId, activityId) {
-        const data = this.getData();
-        const event = data.events.find(e => e.id === parseInt(eventId));
-        
-        if (event) {
-            event.activities = event.activities.filter(activity => activity.id !== parseInt(activityId));
-            this.setData(data);
-            return true;
-        }
-        return false;
-    }
-
-    // Getters for reference data
+    // Other data getters (now using constants or will be fetched from Firestore if needed)
     getFamilies() {
-        return this.getData()?.families || [];
-    }
-
-    getFamilyNames() {
-        return this.getFamilies().map(family => family.name);
+        return this.families;
     }
 
     getExpenseCategories() {
-        return this.getData()?.expenseCategories || [];
+        return this.expenseCategories;
     }
 
     getPaymentModes() {
-        return this.getData()?.paymentModes || [];
+        return this.paymentModes;
     }
 
     getActivityCategories() {
-        return this.getData()?.activityCategories || [];
+        return this.activityCategories;
     }
 
-    // Settings methods
     getSettings() {
-        return this.getData()?.settings || {};
+        return this.settings;
     }
 
     updateSettings(newSettings) {
-        const data = this.getData();
-        data.settings = { ...data.settings, ...newSettings };
-        this.setData(data);
-        return data.settings;
+        this.settings = { ...this.settings, ...newSettings };
+        // TODO: Implement saving settings to Firestore if they need to be persistent across devices
     }
 
-    // Admin authentication
-    validateAdminPassword(password) {
-        const settings = this.getSettings();
-        return password === settings.adminPassword;
+    generateUniqueId() {
+        return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
     }
 
-    changeAdminPassword(newPassword) {
-        return this.updateSettings({ adminPassword: newPassword });
+    checkAdminPassword(password) {
+        return password === this.adminPassword;
     }
 }
 
-// UIController class - NO CHANGES (keeping original implementation)
-class UIController {
+// --- Main App Class (UI Logic) ---
+class App {
     constructor() {
         this.dataManager = new DataManager();
-        this.currentEvent = null;
-        this.currentEditingEvent = null;
-        this.charts = {};
-        this.isAdmin = false;
-        this.currentFilters = {
-            year: '',
-            search: '',
-            sortBy: 'date'
+        this.isUserAdmin = false; // Track admin status
+
+        // UI Elements
+        this.adminToggleBtn = document.getElementById("adminToggle");
+        this.adminBtnText = document.getElementById("adminBtnText");
+    // Admin modal elements (support both legacy and current IDs)
+    this.adminLoginModal = document.getElementById("adminLoginModal") || document.getElementById("adminModal");
+    // Separate login input (in the auth modal) from the admin-panel change-password input
+    this.adminLoginPasswordInput = document.getElementById("adminPassword"); // login modal input
+    this.adminPanelPasswordInput = document.getElementById("adminPasswordInput"); // admin panel change-password input
+    // Backward-compatible alias used by older code paths (prefers login input)
+    this.adminPasswordInput = this.adminLoginPasswordInput || this.adminPanelPasswordInput;
+    this.adminLoginBtn = document.getElementById("adminLoginBtn"); // legacy button (current uses form submit)
+    this.adminLoginForm = document.getElementById("adminLoginForm"); // current markup
+    this.adminLogoutBtn = document.getElementById("adminLogoutBtn");
+    this.adminCloseModalBtn = document.getElementById("adminCloseModalBtn") || document.getElementById("closeAdminModal");
+    this.togglePasswordBtn = document.getElementById("togglePassword");
+    this.adminErrorMsg = document.getElementById("adminErrorMsg");
+
+        this.eventsGrid = document.getElementById("eventsGrid");
+        this.addEventBtn = document.getElementById("addEventBtn");
+    // There are two modals in the markup: a detailed Event modal (read-only overview)
+    // and a separate Event Form modal used for creating/editing events. Use the form modal
+    // for Add/Edit flows and keep the detail modal for read-only display.
+    this.eventModal = document.getElementById("eventModal");
+    this.eventModalTitle = document.getElementById("eventModalTitle");
+    this.eventFormModal = document.getElementById("eventFormModal");
+    this.eventForm = document.getElementById("eventForm");
+    // Form inputs in markup use the "...Input" suffix
+    this.eventNameInput = document.getElementById("eventNameInput");
+    this.eventYearInput = document.getElementById("eventYearInput");
+    this.eventDateInput = document.getElementById("eventDateInput");
+    this.eventBudgetInput = document.getElementById("eventBudgetInput");
+    this.eventVenueInput = document.getElementById("eventVenueInput");
+    this.eventGuestsInput = document.getElementById("eventGuestsInput");
+    this.eventDescriptionInput = document.getElementById("eventDescInput");
+    this.eventPhotosInput = document.getElementById("eventPhotosInput");
+    this.closeEventFormBtn = document.getElementById("closeEventFormModal");
+    this.cancelEventFormBtn = document.getElementById("cancelEventForm");
+    // Buttons inside the detail modal (if any) will be handled separately; add/remove via event cards
+    // Support both legacy and current close IDs
+    this.closeEventModalBtn = document.getElementById("closeEventModalBtn") || document.getElementById("closeEventModal");
+    // Align with current HTML structure
+    this.eventTabs = document.querySelectorAll(".tab-btn");
+    this.eventTabContents = document.querySelectorAll(".tab-pane");
+
+        this.filterBtn = document.getElementById("filterBtn");
+        this.searchInput = document.getElementById("searchInput");
+
+        // Form fields for event details
+        this.eventNameInput = document.getElementById("eventName");
+        this.eventYearInput = document.getElementById("eventYear");
+        this.eventDateInput = document.getElementById("eventDate");
+        this.eventBudgetInput = document.getElementById("eventBudget");
+        this.eventVenueInput = document.getElementById("eventVenue");
+        this.eventGuestsInput = document.getElementById("eventGuests");
+        this.eventDescriptionInput = document.getElementById("eventDescription");
+        this.eventPhotosInput = document.getElementById("eventPhotosLink");
+        this.eventStatusInput = document.getElementById("eventStatus");
+
+        // Finances tab elements
+        this.financesTableBody = document.getElementById("financesTableBody");
+        this.addExpenseBtn = document.getElementById("addExpenseBtn");
+        this.addIncomeBtn = document.getElementById("addIncomeBtn");
+
+        // Activities tab elements
+        this.activitiesTableBody = document.getElementById("activitiesTableBody");
+        this.addActivityBtn = document.getElementById("addActivityBtn");
+
+        // Hero stats
+        this.totalEventsSpan = document.getElementById("totalEvents");
+        this.totalFamiliesSpan = document.getElementById("totalFamilies");
+        this.totalSpentSpan = document.getElementById("totalSpent");
+
+        // Charts
+        this.budgetChartCtx = document.getElementById("budgetChart")?.getContext("2d");
+        this.contributionChartCtx = document.getElementById("contributionChart")?.getContext("2d");
+        this.expenseChartCtx = document.getElementById("expenseChart")?.getContext("2d");
+        this.paymentChartCtx = document.getElementById("paymentChart")?.getContext("2d");
+        this.budgetChart = null;
+        this.contributionChart = null;
+        this.expenseChart = null;
+        this.paymentChart = null;
+
+        this.currentEventId = null;
+
+        this.dataManager.onDataChangeCallback = () => {
+            this.renderAll();
         };
-        
+
         this.init();
     }
 
-    init() {
-        this.setupEventListeners();
-        this.updateHeroStats();
-        this.renderEvents();
-        this.renderAnalytics();
+    async init() {
+        await this.dataManager.loadInitialData();
+        this.initEventListeners();
+        this.renderAll();
         this.updateAdminUI();
-        this.setupAdminPanelHandlers();
-        this.applySettingsToUI();
-        this.setupVenueAutocomplete();
-        this.setupSearchDebounce();
-
-        // Firestore-only: no remote hydration event needed
     }
 
-    setupEventListeners() {
-        // Navigation
-        document.querySelectorAll('.nav__link').forEach(link => {
-            link.addEventListener('click', (e) => this.handleNavigation(e));
+    initEventListeners() {
+        // Admin toggle
+        this.adminToggleBtn.addEventListener("click", () => {
+            if (this.isUserAdmin) {
+                this.logoutAdmin();
+            } else {
+                this.showAdminLoginModal();
+            }
         });
 
-        // Mobile menu toggle
-        const navToggle = document.getElementById('navToggle');
-        if (navToggle) {
-            navToggle.addEventListener('click', () => this.toggleMobileMenu());
+        // Admin login: support legacy button click or current form submit
+        if (this.adminLoginBtn) {
+            this.adminLoginBtn.addEventListener("click", () => this.loginAdmin());
+        }
+        // Listen for Enter on the login modal's password input only
+        if (this.adminLoginPasswordInput) {
+            this.adminLoginPasswordInput.addEventListener("keypress", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    this.loginAdmin();
+                }
+            });
+        }
+        if (this.adminLoginForm) {
+            this.adminLoginForm.addEventListener("submit", (e) => {
+                e.preventDefault();
+                this.loginAdmin();
+            });
+        }
+        if (this.adminCloseModalBtn) {
+            this.adminCloseModalBtn.addEventListener("click", () => this.hideAdminLoginModal());
+        }
+        // Toggle visibility for the login modal password input
+        if (this.togglePasswordBtn && this.adminLoginPasswordInput) {
+            this.togglePasswordBtn.addEventListener("click", () => {
+                const isPassword = this.adminLoginPasswordInput.getAttribute("type") === "password";
+                this.adminLoginPasswordInput.setAttribute("type", isPassword ? "text" : "password");
+                // Toggle icon if present
+                const icon = this.togglePasswordBtn.querySelector("i");
+                if (icon) {
+                    icon.classList.toggle("fa-eye");
+                    icon.classList.toggle("fa-eye-slash");
+                }
+            });
         }
 
-        // Admin toggle (safe binding)
-        const adminToggleEl = document.getElementById('adminToggle');
-        if (adminToggleEl) {
-            adminToggleEl.addEventListener('click', () => this.toggleAdmin());
-        }
+        // Add Event Button - open the event form modal (create flow)
+    if (this.addEventBtn) this.addEventBtn.addEventListener("click", () => this.openEventFormModal());
 
-        // Floating admin button
-        const floatingAdminBtn = document.getElementById('floatingAdminBtn');
-        if (floatingAdminBtn) {
-            floatingAdminBtn.addEventListener('click', () => this.toggleAdmin());
-        }
-
-        // Footer admin logout button
-        const footerAdminLogout = document.getElementById('footerAdminLogout');
-        if (footerAdminLogout) {
-            footerAdminLogout.addEventListener('click', () => this.logout());
-        }
-
-        // Filter and search
-        document.getElementById('filterBtn').addEventListener('click', () => this.showFilterModal());
-        
-        // Real-time search
-        const searchInput = document.getElementById('searchInput');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => this.handleSearch(e.target.value));
-        }
-
-        // Modal handlers
-        this.setupModalHandlers();
-
-        // Form handlers
-        this.setupFormHandlers();
-
-        // Add event button
-        document.getElementById('addEventBtn').addEventListener('click', () => this.showAddEventModal());
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
+        // Hook the event form submit (create/update)
+    if (this.eventForm) {
+        this.eventForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            this.saveEventFromForm();
+        });
+    }
+    // Close / Cancel handlers for the event form modal
+    if (this.closeEventFormBtn) this.closeEventFormBtn.addEventListener("click", () => this.closeEventFormModal());
+    if (this.cancelEventFormBtn) this.cancelEventFormBtn.addEventListener("click", () => this.closeEventFormModal());
+    if (this.eventFormModal) {
+        this.eventFormModal.addEventListener("click", (e) => {
+            // Close when clicking overlay or outside the modal content
+            if (e.target === this.eventFormModal || e.target.classList.contains("modal__overlay")) {
+                this.closeEventFormModal();
+            }
+        });
     }
 
-    handleKeyboardShortcuts(e) {
-        if (e.ctrlKey || e.metaKey) {
-            switch (e.key) {
-                case 'n':
-                    if (this.isAdmin) {
-                        e.preventDefault();
-                        this.showAddEventModal();
-                    }
-                    break;
-                case 'f':
-                    e.preventDefault();
-                    document.getElementById('searchInput').focus();
-                    break;
+        // Event Modal Actions
+        if (this.saveEventBtn) this.saveEventBtn.addEventListener("click", () => this.saveEvent());
+        if (this.deleteEventBtn) this.deleteEventBtn.addEventListener("click", () => this.deleteEvent());
+        if (this.closeEventModalBtn) this.closeEventModalBtn.addEventListener("click", () => this.closeEventModal());
+        if (this.eventModal) {
+            this.eventModal.addEventListener("click", (e) => {
+                if (e.target === this.eventModal) this.closeEventModal();
+            });
+        }
+
+        // Event Tabs
+        this.eventTabs.forEach(tab => {
+            tab.addEventListener("click", (e) => this.switchEventTab(e.currentTarget));
+        });
+
+        // Finances Tab Buttons
+    if (this.addExpenseBtn) this.addExpenseBtn.addEventListener("click", () => this.addFinanceItem("expenses"));
+    if (this.addIncomeBtn) this.addIncomeBtn.addEventListener("click", () => this.addFinanceItem("income"));
+
+        // Activities Tab Button
+    if (this.addActivityBtn) this.addActivityBtn.addEventListener("click", () => this.addActivityItem());
+
+        // Filter and Search
+    if (this.searchInput) this.searchInput.addEventListener("input", () => this.renderEvents());
+    if (this.filterBtn) this.filterBtn.addEventListener("click", () => this.toggleFilterSortOptions()); // Assuming a function for this
+    }
+
+    showAdminLoginModal() {
+        if (!this.adminLoginModal) return;
+        this.adminLoginModal.classList.remove("hidden");
+        if (this.adminLoginPasswordInput) this.adminLoginPasswordInput.value = "";
+        if (this.adminErrorMsg) this.adminErrorMsg.textContent = "";
+    }
+
+    hideAdminLoginModal() {
+        if (!this.adminLoginModal) return;
+        this.adminLoginModal.classList.add("hidden");
+    }
+
+    loginAdmin() {
+        const password = this.adminLoginPasswordInput ? this.adminLoginPasswordInput.value : "";
+        if (this.dataManager.checkAdminPassword(password)) {
+            this.isUserAdmin = true;
+            this.hideAdminLoginModal();
+            this.updateAdminUI();
+            this.renderAll(); // Re-render to show admin controls
+        } else {
+            if (this.adminErrorMsg) {
+                this.adminErrorMsg.textContent = "Incorrect password.";
             }
         }
-        
-        if (e.key === 'Escape') {
-            this.closeAllModals();
+    }
+
+    // Open the lightweight Event Form modal used for Add / Edit
+    openEventFormModal(eventId = null) {
+        if (!this.eventFormModal) return;
+        this.eventFormModal.classList.remove("hidden");
+        this.currentEventId = eventId;
+        // Reset or populate form
+        if (eventId) {
+            const ev = this.dataManager.getEventById(eventId);
+            if (ev) {
+                this.eventNameInput.value = ev.name || "";
+                this.eventYearInput.value = ev.year || "";
+                this.eventDateInput.value = ev.date || "";
+                this.eventBudgetInput.value = ev.totalBudget || "";
+                this.eventVenueInput.value = ev.venue || "";
+                this.eventGuestsInput.value = ev.expectedGuests || "";
+                this.eventDescriptionInput.value = ev.description || "";
+                this.eventPhotosInput.value = ev.googlePhotosLink || "";
+            }
+        } else {
+            this.eventForm.reset();
         }
     }
 
-    setupSearchDebounce() {
-        let searchTimeout;
-        this.handleSearch = (query) => {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-                this.currentFilters.search = query.toLowerCase().trim();
-                this.renderEvents();
-            }, 300);
+    closeEventFormModal() {
+        if (!this.eventFormModal) return;
+        this.eventFormModal.classList.add("hidden");
+        this.currentEventId = null;
+    }
+
+    async saveEventFromForm() {
+        // Read values from the simple form and create/update event
+        const eventData = {
+            name: this.eventNameInput.value.trim(),
+            year: parseInt(this.eventYearInput.value) || new Date().getFullYear(),
+            date: this.eventDateInput.value || "",
+            totalBudget: parseFloat(this.eventBudgetInput.value) || 0,
+            venue: this.eventVenueInput.value || "",
+            expectedGuests: parseInt(this.eventGuestsInput.value) || 0,
+            description: this.eventDescriptionInput.value || "",
+            googlePhotosLink: this.eventPhotosInput.value || "",
+            expenses: [],
+            income: [],
+            activities: []
         };
-    }
 
-    /***** Venue autocomplete using Nominatim (OpenStreetMap) *****/
-    setupVenueAutocomplete() {
-        const input = document.getElementById('eventVenueInput');
-        const dataList = document.getElementById('venueSuggestions');
-        if (!input || !dataList) return;
-
-        let timeout;
-        input.addEventListener('input', (e) => {
-            const q = e.target.value.trim();
-            clearTimeout(timeout);
-            if (!q) return;
-            timeout = setTimeout(async () => {
-                try {
-                    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`;
-                    const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-                    const places = await res.json();
-                    dataList.innerHTML = places.map(p => `<option value="${p.display_name}"></option>`).join('');
-                } catch (err) {
-                    console.warn('Venue autocomplete failed', err);
-                }
-            }, 400);
-        });
-    }
-
-    setupModalHandlers() {
-        // Close modal handlers
-        document.querySelectorAll('.modal__close, .modal__overlay').forEach(element => {
-            element.addEventListener('click', (e) => {
-                // If this is an overlay, only close when clicking the overlay itself (not children)
-                if (element.classList.contains('modal__overlay')) {
-                    if (e.target === element) this.closeAllModals();
-                    return;
-                }
-
-                // For close buttons, allow clicks on the button or any child (e.g., icon)
-                if (element.classList.contains('modal__close')) {
-                    if (element.contains(e.target)) this.closeAllModals();
-                }
-            });
-        });
-    }
-
-    setupFormHandlers() {
-        // Admin login form
-        document.getElementById('adminLoginForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleAdminLogin();
-        });
-
-        // Event form
-        document.getElementById('eventForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleEventForm();
-        });
-
-        // Finance form
-        document.getElementById('financeForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleFinanceForm();
-        });
-
-        // Activity form
-        document.getElementById('activityForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleActivityForm();
-        });
-
-        // Filter form
-        this.setupFilterForm();
-
-        // Cancel buttons
-        document.getElementById('cancelEventForm').addEventListener('click', () => this.closeAllModals());
-        document.getElementById('cancelFinanceForm').addEventListener('click', () => {
-            // close finance modal only and keep event modal open on finances tab
-            this.closeModal('financeModal');
-            const financeTabBtn = document.querySelector('.tab-btn[data-tab="finances"]');
-            if (financeTabBtn) financeTabBtn.click();
-        });
-        document.getElementById('cancelActivityForm').addEventListener('click', () => this.closeAllModals());
-    }
-
-    setupFilterForm() {
-        // Populate filter year options
-        const years = [...new Set(this.dataManager.getEvents().map(event => event.year))].sort((a, b) => b - a);
-        const filterYear = document.getElementById('filterYear');
-        
-        years.forEach(year => {
-            const option = document.createElement('option');
-            option.value = year;
-            option.textContent = year;
-            filterYear.appendChild(option);
-        });
-
-        // Filter form handler
-        document.getElementById('filterForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.applyFilters();
-        });
-
-        document.getElementById('clearFilters').addEventListener('click', () => {
-            this.clearFilters();
-        });
-
-        document.getElementById('closeFilterModal').addEventListener('click', () => {
-            this.closeAllModals();
-        });
-    }
-
-    handleNavigation(e) {
-        e.preventDefault();
-        const section = e.target.getAttribute('data-section');
-        
-        // Update active nav link
-        document.querySelectorAll('.nav__link').forEach(link => link.classList.remove('active'));
-        e.target.classList.add('active');
-        
-        // Scroll to section
-        this.scrollToSection(section);
-    }
-
-    scrollToSection(sectionId) {
-        const targetSection = document.getElementById(sectionId);
-        if (targetSection) {
-            const headerHeight = document.querySelector('.header').offsetHeight;
-            const targetPosition = targetSection.offsetTop - headerHeight - 20;
-            
-            window.scrollTo({
-                top: targetPosition,
-                behavior: 'smooth'
-            });
-        }
-    }
-
-    toggleMobileMenu() {
-        const navMenu = document.getElementById('navMenu');
-        navMenu.classList.toggle('nav__menu--open');
-    }
-
-    toggleAdmin() {
-        if (this.isAdmin) {
-            this.logout();
+        if (this.currentEventId) {
+            eventData.id = this.currentEventId;
+            await this.dataManager.updateEvent(eventData);
         } else {
-            this.showModal('adminModal');
+            await this.dataManager.addEvent(eventData);
         }
+
+        this.closeEventFormModal();
+        this.renderAll();
     }
 
-    handleAdminLogin() {
-        const password = document.getElementById('adminPassword').value;
-        
-        if (this.dataManager.validateAdminPassword(password)) {
-            this.isAdmin = true;
-            this.updateAdminUI();
-            this.closeAllModals();
-            this.showToast('Admin login successful!', 'success');
-            // Open admin panel automatically after login so admin can edit settings
-            this.openAdminPanel();
-            document.getElementById('adminPassword').value = '';
-        } else {
-            this.showToast('Invalid password.', 'error');
-            document.getElementById('adminPassword').focus();
-        }
-    }
-
-    logout() {
-        this.isAdmin = false;
+    logoutAdmin() {
+        this.isUserAdmin = false;
         this.updateAdminUI();
-        this.showToast('Logged out successfully', 'success');
+        this.renderAll(); // Re-render to hide admin controls
     }
 
     updateAdminUI() {
-        const adminElements = document.querySelectorAll('.admin-only');
-        const adminToggle = document.getElementById('adminToggle');
-        const adminBtnText = document.getElementById('adminBtnText');
-        const floatingAdminBtn = document.getElementById('floatingAdminBtn');
-        
-        // Add/remove admin-active class to body
-        if (this.isAdmin) {
-            document.body.classList.add('admin-active');
+        // Use body class to control admin-only visibility per CSS
+        if (this.isUserAdmin) {
+            if (this.adminBtnText) this.adminBtnText.textContent = "Exit Admin";
+            document.body.classList.add("is-admin");
         } else {
-            document.body.classList.remove('admin-active');
+            if (this.adminBtnText) this.adminBtnText.textContent = "Admin";
+            document.body.classList.remove("is-admin");
         }
-        
-        adminElements.forEach(el => {
-            if (this.isAdmin) {
-                el.classList.remove('hidden');
-            } else {
-                el.classList.add('hidden');
-            }
-        });
-        
-        if (adminBtnText) adminBtnText.textContent = this.isAdmin ? 'Logout' : 'Admin';
-        if (adminToggle) adminToggle.title = this.isAdmin ? 'Logout from admin panel' : 'Login to admin panel';
-        
-        // Update floating button title
-        if (floatingAdminBtn) {
-            floatingAdminBtn.title = this.isAdmin ? 'Logout from Admin' : 'Admin Access';
-        }
-        // Show/Hide add event button
-        const addEventBtn = document.getElementById('addEventBtn');
-        if (addEventBtn) {
-            if (this.isAdmin) addEventBtn.classList.remove('hidden'); else addEventBtn.classList.add('hidden');
-        }
-        // Enable/disable inline editable mini controls based on admin state
-        const miniDate = document.getElementById('eventDateInputMini');
-        const miniBudget = document.getElementById('eventBudgetInputMini');
-        const miniVenue = document.getElementById('eventVenueInputMini');
-        const miniGuests = document.getElementById('eventGuestsInputMini');
-        [miniDate, miniBudget, miniVenue, miniGuests].forEach(el => {
-            if (!el) return;
-            el.disabled = !this.isAdmin;
-            // add a subtle readonly visual affordance
-            if (this.isAdmin) el.classList.remove('disabled-nonadmin'); else el.classList.add('disabled-nonadmin');
-        });
     }
 
-    // Admin panel methods
-    openAdminPanel() {
-        // Populate admin panel with current settings
-        const settings = this.dataManager.getSettings();
-        document.getElementById('siteNameInput').value = settings.siteName || '';
-        document.getElementById('taglineInput').value = settings.tagline || '';
-        document.getElementById('designedByInput').value = settings.designedBy || '';
-        document.getElementById('partneredWithInput').value = settings.partneredWith || '';
-        document.getElementById('adminPasswordInput').value = '';
-
-        this.showModal('adminPanelModal');
+    renderAll() {
+        this.renderEvents();
+        this.updateHeroStats();
+        this.renderAnalytics();
     }
 
-    setupAdminPanelHandlers() {
-        const adminPanelForm = document.getElementById('adminPanelForm');
-        if (adminPanelForm) {
-            adminPanelForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                const newSettings = {
-                    siteName: document.getElementById('siteNameInput').value.trim(),
-                    tagline: document.getElementById('taglineInput').value.trim(),
-                    designedBy: document.getElementById('designedByInput').value.trim(),
-                    partneredWith: document.getElementById('partneredWithInput').value.trim()
-                };
+    renderEvents() {
+        const events = this.dataManager.getEvents();
+        const searchTerm = this.searchInput.value.toLowerCase();
+        this.eventsGrid.innerHTML = "";
 
-                const newPassword = document.getElementById('adminPasswordInput').value.trim();
-                if (newPassword) {
-                    newSettings.adminPassword = newPassword;
-                }
+        const filteredEvents = events.filter(event =>
+            event.name.toLowerCase().includes(searchTerm) ||
+            event.description.toLowerCase().includes(searchTerm) ||
+            event.venue.toLowerCase().includes(searchTerm)
+        );
 
-                this.dataManager.updateSettings(newSettings);
-                this.applySettingsToUI();
-                this.closeAllModals();
-                this.showToast('Settings updated successfully', 'success');
+        if (filteredEvents.length === 0) {
+            this.eventsGrid.innerHTML = 
+                `<div class="no-events">
+                    <i class="fas fa-box-open"></i>
+                    <p>No events found. ${this.isUserAdmin ? "Click 'Add Event' to create one." : ""}</p>
+                </div>`;
+            return;
+        }
+
+        filteredEvents.forEach(event => {
+            const eventCard = document.createElement("div");
+            eventCard.className = "event-card";
+            eventCard.innerHTML = `
+                <div class="event-card__header">
+                    <span class="event-card__year">${event.year}</span>
+                    <h3 class="event-card__title">${event.name}</h3>
+                </div>
+                <div class="event-card__body">
+                    <p class="event-card__description">${event.description.substring(0, 100)}...</p>
+                    <div class="event-card__meta">
+                        <span><i class="fas fa-calendar-alt"></i> ${event.date}</span>
+                        <span><i class="fas fa-map-marker-alt"></i> ${event.venue}</span>
+                    </div>
+                </div>
+                <div class="event-card__footer">
+                    <span class="event-card__status event-card__status--${event.status}">${event.status}</span>
+                    <button class="btn btn--sm btn--outline view-details-btn" data-id="${event.id}">View Details</button>
+                    ${this.isUserAdmin ? `<button class="btn btn--sm btn--danger delete-event-btn" data-id="${event.id}">Delete</button>` : ""}
+                </div>
+            `;
+            // view details button
+            const viewBtn = eventCard.querySelector(".view-details-btn");
+            if (viewBtn) viewBtn.addEventListener("click", (e) => {
+                this.openEventModal(e.currentTarget.dataset.id);
             });
-        }
-
-        const cancelAdminPanel = document.getElementById('cancelAdminPanel');
-        if (cancelAdminPanel) cancelAdminPanel.addEventListener('click', () => this.closeAllModals());
-        const closeAdminPanelModal = document.getElementById('closeAdminPanelModal');
-        if (closeAdminPanelModal) closeAdminPanelModal.addEventListener('click', () => this.closeAllModals());
-    }
-
-    applySettingsToUI() {
-        const settings = this.dataManager.getSettings();
-        const brandTitle = document.getElementById('brandTitle');
-        const brandTagline = document.getElementById('brandTagline');
-        const designedByEl = document.getElementById('designedBy');
-        const partneredWithEl = document.getElementById('partneredWith');
-
-        if (brandTitle) brandTitle.textContent = settings.siteName || 'Vallamkonda ManasAI';
-        if (brandTagline) brandTagline.textContent = settings.tagline || 'Conscious intelligence in motion';
-        if (designedByEl) designedByEl.textContent = settings.designedBy || '';
-        if (partneredWithEl) partneredWithEl.textContent = settings.partneredWith || '';
-    }
-
-    showFilterModal() {
-        // Set current filter values
-        document.getElementById('filterYear').value = this.currentFilters.year;
-        document.getElementById('filterSort').value = this.currentFilters.sortBy;
-        
-        this.showModal('filterModal');
-    }
-
-    applyFilters() {
-        this.currentFilters.year = document.getElementById('filterYear').value;
-        this.currentFilters.sortBy = document.getElementById('filterSort').value;
-        
-        this.renderEvents();
-        this.closeAllModals();
-        this.showToast('Filters applied successfully', 'success');
-    }
-
-    clearFilters() {
-        this.currentFilters = {
-            year: '',
-            search: '',
-            sortBy: 'date'
-        };
-        
-        document.getElementById('filterYear').value = '';
-        document.getElementById('filterSort').value = 'date';
-        document.getElementById('searchInput').value = '';
-        
-        this.renderEvents();
-        this.closeAllModals();
-        this.showToast('Filters cleared', 'success');
-    }
-
-    filterAndSortEvents(events) {
-        let filteredEvents = [...events];
-        
-        // Apply year filter
-        if (this.currentFilters.year) {
-            filteredEvents = filteredEvents.filter(event => event.year === parseInt(this.currentFilters.year));
-        }
-        
-        // Apply search filter
-        if (this.currentFilters.search) {
-            filteredEvents = filteredEvents.filter(event => 
-                event.name.toLowerCase().includes(this.currentFilters.search) ||
-                event.description.toLowerCase().includes(this.currentFilters.search) ||
-                event.venue.toLowerCase().includes(this.currentFilters.search)
-            );
-        }
-        
-        // Apply sorting
-        switch (this.currentFilters.sortBy) {
-            case 'date':
-                filteredEvents.sort((a, b) => new Date(b.date) - new Date(a.date));
-                break;
-            case 'date-asc':
-                filteredEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
-                break;
-            case 'name':
-                filteredEvents.sort((a, b) => a.name.localeCompare(b.name));
-                break;
-            case 'budget':
-                filteredEvents.sort((a, b) => b.totalBudget - a.totalBudget);
-                break;
-            case 'budget-asc':
-                filteredEvents.sort((a, b) => a.totalBudget - b.totalBudget);
-                break;
-            default:
-                filteredEvents.sort((a, b) => new Date(b.date) - new Date(a.date));
-        }
-        
-        return filteredEvents;
+            // delete button (admin only)
+            const delBtn = eventCard.querySelector(".delete-event-btn");
+            if (delBtn) {
+                delBtn.addEventListener("click", async (e) => {
+                    const id = e.currentTarget.dataset.id;
+                    if (confirm("Are you sure you want to delete this event?")) {
+                        await this.dataManager.deleteEvent(id);
+                        this.renderAll();
+                    }
+                });
+            }
+            this.eventsGrid.appendChild(eventCard);
+        });
     }
 
     updateHeroStats() {
         const events = this.dataManager.getEvents();
-        const families = this.dataManager.getFamilies();
-        // Compute total spent across all events (sum of all event expenses)
+        this.totalEventsSpan.textContent = events.length;
+        this.totalFamiliesSpan.textContent = this.dataManager.getFamilies().length; // Assuming families are static or loaded separately
         const totalSpent = events.reduce((sum, event) => {
-            const eventExpenses = (Array.isArray(event.expenses) ? event.expenses : []).reduce((s, e) => s + (e.amount || 0), 0);
-            return sum + eventExpenses;
+            return sum + (event.expenses ? event.expenses.reduce((s, exp) => s + exp.amount, 0) : 0);
         }, 0);
-
-        // Find families involved in existing events
-        const involvedFamilyNames = new Set();
-        events.forEach(event => {
-            if (Array.isArray(event.income)) {
-                event.income.forEach(inc => {
-                    if (inc.family) involvedFamilyNames.add(inc.family);
-                });
-            }
-        });
-        // Sum members of only involved families
-        const involvedFamilies = families.filter(fam => involvedFamilyNames.has(fam.name));
-        const totalMembers = involvedFamilies.reduce((sum, fam) => sum + (fam.members || 0), 0);
-
-        // Animate numbers
-        this.animateNumber('totalEvents', events.length);
-        this.animateNumber('totalFamilies', totalMembers);
-        // show total spent in hero (currency)
-        this.animateNumber('totalSpent', totalSpent, true);
+        this.totalSpentSpan.innerHTML = `<i class="fas fa-rupee-sign"></i> ${totalSpent.toLocaleString("en-IN")}`;
     }
 
-    animateNumber(elementId, targetValue, isCurrency = false) {
-        const element = document.getElementById(elementId);
-        const startValue = 0;
-        const duration = 1000;
-        const startTime = performance.now();
-        
-        const updateNumber = (currentTime) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const currentValue = Math.floor(startValue + (targetValue - startValue) * progress);
-            
-            if (isCurrency) {
-                element.textContent = `₹${this.formatCurrency(currentValue)}`;
-            } else {
-                element.textContent = currentValue;
-            }
-            
-            if (progress < 1) {
-                requestAnimationFrame(updateNumber);
-            }
-        };
-        
-        requestAnimationFrame(updateNumber);
-    }
-
-    renderEvents() {
-        const eventsGrid = document.getElementById('eventsGrid');
-        const allEvents = this.dataManager.getEvents();
-        const events = this.filterAndSortEvents(allEvents);
-        
-        if (events.length === 0) {
-            const isEmpty = allEvents.length === 0;
-            const message = isEmpty ? 
-                'Start by adding your first family event' : 
-                'No events match your current filters';
-            const icon = isEmpty ? 'fas fa-calendar-plus' : 'fas fa-filter';
-            
-            eventsGrid.innerHTML = `
-                <div class="empty-state">
-                    <i class="${icon}"></i>
-                    <h3>${isEmpty ? 'No Events Yet' : 'No Results Found'}</h3>
-                    <p>${message}</p>
-                    ${!isEmpty ? '<button class="btn btn--outline" onclick="app.clearFilters()">Clear Filters</button>' : ''}
-                </div>
-            `;
-            return;
-        }
-        
-        eventsGrid.innerHTML = events.map(event => this.createEventCard(event)).join('');
-        
-        // Use delegated event handling on the grid so handlers don't duplicate and clicks always work
-        const eventsGridEl = document.getElementById('eventsGrid');
-        if (eventsGridEl && !eventsGridEl.dataset.delegateAttached) {
-            eventsGridEl.addEventListener('click', (e) => {
-                // Admin action buttons (edit/delete)
-                const adminBtn = e.target.closest('.admin-btn');
-                if (adminBtn) {
-                    e.stopPropagation();
-                    const action = adminBtn.dataset.action;
-                    const eventId = adminBtn.dataset.eventId;
-                    if (action === 'edit') {
-                        this.editEvent(eventId);
-                    } else if (action === 'delete') {
-                        this.deleteEvent(eventId);
-                    }
-                    return;
-                }
-
-                // Card click -> open details (ignore clicks inside admin-actions)
-                const card = e.target.closest('.event-card');
-                if (card && !e.target.closest('.admin-actions')) {
-                    const eventId = card.dataset.eventId;
-                    // Event card click handled
-                    this.showEventDetails(eventId);
-                }
-            });
-            eventsGridEl.dataset.delegateAttached = '1';
-        }
-    }
-
-    createEventCard(event) {
-        const totalExpenses = event.expenses.reduce((sum, exp) => sum + exp.amount, 0);
-        const totalIncome = event.income.reduce((sum, inc) => sum + inc.amount, 0);
-        const budgetUsed = event.totalBudget > 0 ? (totalExpenses / event.totalBudget) * 100 : 0;
-        const balance = totalIncome - totalExpenses;
-
-        const statusClass = new Date(event.date) > new Date() ? 'upcoming' : 'completed';
-        const statusText = statusClass === 'upcoming' ? 'Upcoming' : 'Completed';
-
-        // Choose image: uploaded images take precedence
-        const cardImage = (event.images && event.images.length > 0) ? event.images[0] : '';
-
-        return `
-            <div class="event-card" data-event-id="${event.id}">
-                <div class="event-card__media">
-                    ${cardImage ? `<img src="${cardImage}" alt="${event.name}" class="event-card__img">` : (event.googlePhotosLink ? `<div class="event-card__placeholder"><a href="${event.googlePhotosLink}" target="_blank" class="btn btn--primary btn--sm">View Album</a></div>` : `<div class="event-card__placeholder"><i class="fas fa-images"></i></div>` ) }
-                </div>
-                <div class="event-card__header">
-                    <h3 class="event-card__title">${event.name}</h3>
-                    <div class="event-card__date">
-                        <i class="fas fa-calendar"></i>
-                        ${this.formatDate(event.date)}
-                    </div>
-                    <div class="event-card__status event-card__status--${statusClass}">
-                        ${statusText}
-                    </div>
-                    <div class="admin-actions admin-only ${this.isAdmin ? '' : 'hidden'}">
-                        <button class="admin-btn" data-action="edit" data-event-id="${event.id}" title="Edit Event">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="admin-btn" data-action="delete" data-event-id="${event.id}" title="Delete Event">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="event-card__body">
-                    <p class="event-card__description">${event.description}</p>
-                    <div class="event-stats">
-                        <div class="event-stat">
-                            <div class="event-stat__value"><i class='fas fa-rupee-sign'></i> ${this.formatCurrency(event.totalBudget)}</div>
-                            <div class="event-stat__label">Budget</div>
-                        </div>
-                        <div class="event-stat">
-                            <div class="event-stat__value"><i class='fas fa-rupee-sign'></i> ${this.formatCurrency(totalExpenses)}</div>
-                            <div class="event-stat__label">Spent</div>
-                        </div>
-                        <div class="event-stat">
-                            <div class="event-stat__value"><i class='fas fa-rupee-sign'></i> ${this.formatCurrency(totalIncome)}</div>
-                            <div class="event-stat__label">Received</div>
-                        </div>
-                        <div class="event-stat">
-                            <div class="event-stat__value ${balance >= 0 ? 'text-success' : 'text-error'}"><i class='fas fa-rupee-sign'></i> ${this.formatCurrency(Math.abs(balance))}</div>
-                            <div class="event-stat__label">${balance >= 0 ? 'Surplus' : 'Deficit'}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    showEventDetails(eventId) {
-        const event = this.dataManager.getEvent(eventId);
-        if (!event) {
-            this.showToast('Event not found', 'error');
-            return;
-        }
-        
-        this.currentEvent = event;
-        this.populateEventModal(event);
-        this.showModal('eventModal');
-        this.setupEventTabs();
-    }
-
-    populateEventModal(event) {
-        // Set modal title and basic info (guard elements that might not exist)
-        const evtModalTitle = document.getElementById('eventModalTitle');
-        if (evtModalTitle) evtModalTitle.textContent = event.name;
-        const eventNameEl = document.getElementById('eventName');
-        if (eventNameEl) eventNameEl.textContent = event.name;
-        const eventDescriptionEl = document.getElementById('eventDescription');
-        if (eventDescriptionEl) eventDescriptionEl.textContent = event.description;
-        // populate readable fields (some layouts use mini inputs instead)
-        const eventDateEl = document.getElementById('eventDate');
-        if (eventDateEl) eventDateEl.textContent = this.formatDate(event.date);
-        const eventBudgetEl = document.getElementById('eventBudget');
-        if (eventBudgetEl) eventBudgetEl.textContent = `₹${this.formatCurrency(event.totalBudget)}`;
-        const eventVenueEl = document.getElementById('eventVenue');
-        if (eventVenueEl) eventVenueEl.textContent = event.venue || 'Not specified';
-        const eventGuestsEl = document.getElementById('eventGuests');
-        if (eventGuestsEl) eventGuestsEl.textContent = `${event.expectedGuests || 0} Guests`;
-
-        // populate mini editable controls (overview quick-edit)
-        const miniDate = document.getElementById('eventDateInputMini');
-        const miniBudget = document.getElementById('eventBudgetInputMini');
-        const miniVenue = document.getElementById('eventVenueInputMini');
-        const miniGuests = document.getElementById('eventGuestsInputMini');
-        if (miniDate) miniDate.value = event.date || '';
-        if (miniBudget) miniBudget.value = event.totalBudget || '';
-        if (miniVenue) miniVenue.value = event.venue || '';
-        if (miniGuests) miniGuests.value = event.expectedGuests || '';
-
-        // populate venue suggestions for overview from existing datalist
-        const venueSuggestionsMini = document.getElementById('venueSuggestionsMini');
-        if (venueSuggestionsMini) {
-            const venues = this.dataManager.getAllVenues ? this.dataManager.getAllVenues() : [];
-            venueSuggestionsMini.innerHTML = venues.map(v => `<option value="${v}"></option>`).join('');
-        }
-        
-        // Calculate totals
-        const totalExpenses = event.expenses.reduce((sum, exp) => sum + exp.amount, 0);
-        const totalIncome = event.income.reduce((sum, inc) => sum + inc.amount, 0);
-        const balance = totalIncome - totalExpenses;
-        const budgetUsed = event.totalBudget > 0 ? (totalExpenses / event.totalBudget) * 100 : 0;
-        
-        const eventSpentEl = document.getElementById('eventTotalSpent');
-        if (eventSpentEl) eventSpentEl.textContent = `₹${this.formatCurrency(totalExpenses)}`;
-        const eventReceivedEl = document.getElementById('eventTotalReceived');
-        if (eventReceivedEl) eventReceivedEl.textContent = `₹${this.formatCurrency(totalIncome)}`;
-        const eventNetBalanceEl = document.getElementById('eventNetBalance');
-        if (eventNetBalanceEl) {
-            eventNetBalanceEl.textContent = `${balance < 0 ? '-' : ''}₹${this.formatCurrency(Math.abs(balance))}`;
-        }
-        
-        // Update progress circle
-        const progressCircle = document.getElementById('progressCircle');
-        const progressPercent = document.getElementById('progressPercent');
-        const clampedProgress = Math.min(budgetUsed, 100);
-        if (progressCircle) {
-            progressCircle.style.setProperty('--progress-deg', `${(clampedProgress / 100) * 360}deg`);
-        }
-        if (progressPercent) {
-            progressPercent.textContent = `${Math.round(clampedProgress)}%`;
-        }
-
-        // Color code the balance
-        const eventNetBalanceEl2 = document.getElementById('eventNetBalance');
-        if (eventNetBalanceEl2) {
-            eventNetBalanceEl2.className = `stat-value ${balance >= 0 ? 'text-success' : 'text-error'}`;
-        }
-        
-        // Populate tabs
-        this.populateFinances(event);
-        this.populateActivities(event);
-        this.setupPhotos(event);
-        this.setupFinanceButtons(event);
-        this.setupActivityButtons(event);
-
-        // setup quick-save handlers for mini inputs
-        this.setupOverviewMiniHandlers(event.id);
-    }
-
-    setupOverviewMiniHandlers(eventId) {
-        const saveField = async (field, value) => {
-            const updated = {};
-            if (field === 'date') updated.date = value;
-            if (field === 'totalBudget') updated.totalBudget = parseFloat(value) || 0;
-            if (field === 'venue') updated.venue = value;
-            if (field === 'expectedGuests') updated.expectedGuests = parseInt(value) || 0;
-            if (Object.keys(updated).length > 0) {
-                this.dataManager.updateEvent(eventId, updated);
-                // Refresh current event and UI
-                if (this.currentEvent && this.currentEvent.id == eventId) {
-                    this.currentEvent = this.dataManager.getEvent(eventId);
-                    this.populateEventModal(this.currentEvent);
-                }
-                this.renderEvents();
-                this.renderAnalytics();
-            }
-        };
-
-        const miniDate = document.getElementById('eventDateInputMini');
-        const miniBudget = document.getElementById('eventBudgetInputMini');
-        const miniVenue = document.getElementById('eventVenueInputMini');
-        const miniGuests = document.getElementById('eventGuestsInputMini');
-
-        if (miniDate) {
-            miniDate.onchange = (e) => saveField('date', e.target.value);
-        }
-        if (miniBudget) {
-            miniBudget.onchange = (e) => saveField('totalBudget', e.target.value);
-        }
-        if (miniVenue) {
-            miniVenue.onchange = (e) => saveField('venue', e.target.value);
-        }
-        if (miniGuests) {
-            miniGuests.onchange = (e) => saveField('expectedGuests', e.target.value);
-        }
-    }
-
-    populateFinances(event) {
-        const expensesList = document.getElementById('expensesList');
-        const incomeList = document.getElementById('incomeList');
-        
-        // Expenses
-        if (event.expenses.length === 0) {
-            expensesList.innerHTML = '<div class="empty-state"><i class="fas fa-receipt"></i><h4>No expenses recorded</h4><p>Start tracking your event expenses</p></div>';
-        } else {
-            expensesList.innerHTML = event.expenses.map(expense => `
-                <div class="finance-item">
-                    <div class="finance-item__header">
-                        <span class="finance-item__title">${expense.category}</span>
-                        <span class="finance-item__amount">₹${this.formatCurrency(expense.amount)}</span>
-                    </div>
-                    <div class="finance-item__details">
-                        <span>${expense.description}</span>
-                        <span>${expense.paymentMode} • ${this.formatDate(expense.date)}</span>
-                    </div>
-                    <div class="finance-item__actions admin-only ${this.isAdmin ? '' : 'hidden'}">
-                        <button class="admin-btn" onclick="app.editFinanceItem(${event.id}, 'expense', ${expense.id})" title="Edit Expense">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="admin-btn" onclick="app.deleteFinanceItem(${event.id}, 'expense', ${expense.id})" title="Delete Expense">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-        }
-        
-        // Income
-        if (event.income.length === 0) {
-            incomeList.innerHTML = '<div class="empty-state"><i class="fas fa-hand-holding-usd"></i><h4>No contributions recorded</h4><p>Track family contributions here</p></div>';
-        } else {
-            incomeList.innerHTML = event.income.map(income => `
-                <div class="finance-item">
-                    <div class="finance-item__header">
-                        <span class="finance-item__title">${income.family}</span>
-                        <span class="finance-item__amount">₹${this.formatCurrency(income.amount)}</span>
-                    </div>
-                    <div class="finance-item__details">
-                        <span>Family Contribution</span>
-                        <span>${income.paymentMode} • ${this.formatDate(income.date)}</span>
-                    </div>
-                    <div class="finance-item__actions admin-only ${this.isAdmin ? '' : 'hidden'}">
-                        <button class="admin-btn" onclick="app.editFinanceItem(${event.id}, 'income', ${income.id})" title="Edit Contribution">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="admin-btn" onclick="app.deleteFinanceItem(${event.id}, 'income', ${income.id})" title="Delete Contribution">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-        }
-    }
-
-    populateActivities(event) {
-        const activitiesList = document.getElementById('activitiesList');
-        
-        if (event.activities.length === 0) {
-            activitiesList.innerHTML = '<div class="empty-state"><i class="fas fa-tasks"></i><h4>No activities scheduled</h4><p>Add activities to create an event timeline</p></div>';
-        } else {
-            // Sort activities by time
-            const sortedActivities = [...event.activities].sort((a, b) => a.time.localeCompare(b.time));
-            
-            activitiesList.innerHTML = sortedActivities.map(activity => `
-                <div class="activity-item">
-                    <div class="activity-item__header">
-                        <h4 class="activity-item__name">${activity.name}</h4>
-                        <span class="activity-item__time">${this.formatTime(activity.time)}</span>
-                    </div>
-                    <div class="activity-item__details">
-                        <strong>Participants:</strong> ${activity.participants}
-                        ${activity.duration ? ` • <strong>Duration:</strong> ${activity.duration}` : ''}
-                        ${activity.location ? ` • <strong>Location:</strong> ${activity.location}` : ''}
-                    </div>
-                    <div class="activity-item__description">${activity.description}</div>
-                    <div class="activity-item__actions admin-only ${this.isAdmin ? '' : 'hidden'}">
-                        <button class="admin-btn" onclick="app.editActivity(${event.id}, ${activity.id})" title="Edit Activity">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="admin-btn" onclick="app.deleteActivity(${event.id}, ${activity.id})" title="Delete Activity">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-        }
-    }
-
-    setupPhotos(event) {
-        const photoGallery = document.getElementById('photoGallery');
-        const googlePhotosLink = document.getElementById('googlePhotosLink');
-        
-        if (googlePhotosLink) {
-            googlePhotosLink.value = event.googlePhotosLink || '';
-        }
-        
-        // If uploaded images exist, create a simple carousel
-        if (event.images && event.images.length > 0) {
-            photoGallery.innerHTML = `
-                <div class="carousel" id="eventCarousel">
-                    ${event.images.map((src, idx) => `<div class="carousel-slide ${idx===0? 'active' : ''}"><img src="${src}" alt="photo-${idx}"></div>`).join('')}
-                </div>
-            `;
-
-            // Start auto-rotate
-            let carouselIndex = 0;
-            if (this._carouselInterval) clearInterval(this._carouselInterval);
-            this._carouselInterval = setInterval(() => {
-                const slides = photoGallery.querySelectorAll('.carousel-slide');
-                if (!slides || slides.length === 0) return;
-                slides[carouselIndex].classList.remove('active');
-                carouselIndex = (carouselIndex + 1) % slides.length;
-                slides[carouselIndex].classList.add('active');
-            }, 3000);
-        } else if (event.googlePhotosLink) {
-            photoGallery.innerHTML = `
-                <div class="gallery-placeholder">
-                    <i class="fas fa-external-link-alt"></i>
-                    <h4>Google Photos Album</h4>
-                    <p>Click below to view the photo gallery</p>
-                    <a href="${event.googlePhotosLink}" target="_blank" class="btn btn--primary" style="margin-top: 16px;">
-                        <i class="fas fa-images"></i>
-                        View Photo Album
-                    </a>
-                </div>
-            `;
-        } else {
-            photoGallery.innerHTML = `
-                <div class="gallery-placeholder">
-                    <i class="fas fa-images"></i>
-                    <h4>No Photos Yet</h4>
-                    <p>Add Google Photos link or upload images to display event photos</p>
-                </div>
-            `;
-        }
-        
-        // Update photos button
-        const updateBtn = document.getElementById('updatePhotosBtn');
-        if (updateBtn) {
-            updateBtn.onclick = () => {
-                const link = googlePhotosLink.value.trim();
-                if (link && this.isValidUrl(link)) {
-                    this.dataManager.updateEvent(event.id, { googlePhotosLink: link });
-                    this.setupPhotos({ ...event, googlePhotosLink: link });
-                    this.showToast('Photos link updated successfully', 'success');
-                } else if (link) {
-                    this.showToast('Please enter a valid URL', 'error');
-                } else {
-                    this.dataManager.updateEvent(event.id, { googlePhotosLink: '' });
-                    this.setupPhotos({ ...event, googlePhotosLink: '' });
-                    this.showToast('Photos link removed', 'success');
-                }
-            };
-        }
-    }
-
-    isValidUrl(string) {
-        try {
-            new URL(string);
-            return true;
-        } catch (_) {
-            return false;
-        }
-    }
-
-    setupFinanceButtons(event) {
-        const addExpenseBtn = document.getElementById('addExpenseBtn');
-        const addIncomeBtn = document.getElementById('addIncomeBtn');
-        
-        if (addExpenseBtn) {
-            addExpenseBtn.onclick = () => this.showFinanceModal('expense', event.id);
-        }
-        
-        if (addIncomeBtn) {
-            addIncomeBtn.onclick = () => this.showFinanceModal('income', event.id);
-        }
-    }
-
-    setupActivityButtons(event) {
-        const addActivityBtn = document.getElementById('addActivityBtn');
-        
-        if (addActivityBtn) {
-            addActivityBtn.onclick = () => this.showActivityModal(event.id);
-        }
-    }
-
-    setupEventTabs() {
-        const tabBtns = document.querySelectorAll('.tab-btn');
-        const tabPanes = document.querySelectorAll('.tab-pane');
-        
-        tabBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const targetTab = btn.dataset.tab;
-                
-                // Update active tab button
-                tabBtns.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                
-                // Update active tab pane
-                tabPanes.forEach(pane => {
-                    pane.classList.remove('active');
-                    if (pane.id === targetTab) {
-                        pane.classList.add('active');
-                    }
-                });
-            });
-        });
-    }
-
-    // Event CRUD operations
-    showAddEventModal() {
-        if (!this.requireAdmin()) return;
-        document.getElementById('eventFormTitle').textContent = 'Add New Event';
-        const form = document.getElementById('eventForm');
-        form.reset();
-        delete form.dataset.editId;
-        document.getElementById('eventYearInput').value = new Date().getFullYear();
-        document.getElementById('eventDateInput').value = new Date().toISOString().split('T')[0];
-        // Default budget start and step
-        const budgetInput = document.getElementById('eventBudgetInput');
-        if (budgetInput) {
-            budgetInput.value = 1000;
-            budgetInput.step = 1000;
-            budgetInput.min = 0;
-        }
-        this.currentEditingEvent = null;
-        this.showModal('eventFormModal');
-    }
-
-    editEvent(eventId) {
-        if (!this.requireAdmin()) return;
-        const event = this.dataManager.getEvent(eventId);
-        if (!event) {
-            this.showToast('Event not found', 'error');
-            return;
-        }
-        
-        this.currentEditingEvent = event;
-        document.getElementById('eventFormTitle').textContent = 'Edit Event';
-        document.getElementById('eventNameInput').value = event.name;
-        document.getElementById('eventYearInput').value = event.year;
-        document.getElementById('eventDateInput').value = event.date;
-        const budgetInput = document.getElementById('eventBudgetInput');
-        if (budgetInput) {
-            budgetInput.value = event.totalBudget;
-            budgetInput.step = 1000;
-            budgetInput.min = 0;
-        }
-        document.getElementById('eventDescInput').value = event.description;
-        document.getElementById('eventVenueInput').value = event.venue || '';
-        document.getElementById('eventGuestsInput').value = event.expectedGuests || '';
-        document.getElementById('eventPhotosInput').value = event.googlePhotosLink || '';
-		// Clear file input since files can't be set programmatically
-		const uploadInput = document.getElementById('eventPhotoUpload');
-		if (uploadInput) uploadInput.value = '';
-        
-        // Close event detail modal if open
-        this.closeModal('eventModal');
-        this.showModal('eventFormModal');
-    }
-
-    deleteEvent(eventId) {
-        if (!this.requireAdmin()) return;
-        const event = this.dataManager.getEvent(eventId);
-        if (!event) {
-            this.showToast('Event not found', 'error');
-            return;
-        }
-        
-        if (confirm(`Are you sure you want to delete "${event.name}"? This action cannot be undone.`)) {
-            if (this.dataManager.deleteEvent(eventId)) {
-                this.renderEvents();
-                this.updateHeroStats();
-                this.renderAnalytics();
-                this.closeAllModals();
-                this.showToast('Event deleted successfully', 'success');
-            } else {
-                this.showToast('Failed to delete event', 'error');
-            }
-        }
-    }
-
-    async handleEventForm() {
-        if (!this.requireAdmin()) return;
-        const form = document.getElementById('eventForm');
-        const formData = new FormData(form);
-        
-        const eventData = {
-            name: document.getElementById('eventNameInput').value.trim(),
-            year: parseInt(document.getElementById('eventYearInput').value),
-            date: document.getElementById('eventDateInput').value,
-            totalBudget: parseFloat(document.getElementById('eventBudgetInput').value) || 0,
-            description: document.getElementById('eventDescInput').value.trim(),
-            venue: document.getElementById('eventVenueInput').value.trim(),
-            expectedGuests: parseInt(document.getElementById('eventGuestsInput').value) || 0,
-            googlePhotosLink: document.getElementById('eventPhotosInput').value.trim()
-        };
-
-        // Handle uploaded photos (convert to data URLs)
-        const uploadInput = document.getElementById('eventPhotoUpload');
-        if (uploadInput && uploadInput.files && uploadInput.files.length > 0) {
-            eventData.images = [];
-            const files = Array.from(uploadInput.files).slice(0, 10);
-            const readPromises = files.map(file => new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (ev) => resolve(ev.target.result);
-                reader.readAsDataURL(file);
-            }));
-            // Await all images before proceeding
-            eventData.images = await Promise.all(readPromises);
-        }
-        
-        let success = false;
-        if (this.currentEditingEvent) {
-            // Update existing event locally
-            const localId = this.currentEditingEvent.id;
-            const updated = this.dataManager.updateEvent(localId, eventData);
-            // Also update in Firestore (by localId)
-            try { await updateEventRemoteByLocalId(localId, { ...updated }); } catch {}
-            if (updated) {
-                success = true;
-                this.showToast('Event updated successfully', 'success');
-            }
-        } else {
-            // Create new event in Firestore first to get id
-            try {
-                const fsId = await saveEvent(eventData);
-                const created = this.dataManager.addEvent({ ...eventData, id: fsId });
-                if (created) {
-                    success = true;
-                    this.showToast('Event created successfully', 'success');
-                }
-            } catch (e) {
-                console.error('Failed to save event to Firestore:', e);
-            }
-        }
-        
-        if (success) {
-            this.renderEvents();
-            this.updateHeroStats();
-            this.renderAnalytics();
-            this.closeAllModals();
-        } else {
-            this.showToast('Failed to save event', 'error');
-        }
-    }
-
-    // Finance operations
-    showFinanceModal(type, eventId) {
-        if (!this.requireAdmin()) return;
-        document.getElementById('financeType').value = type;
-        const form = document.getElementById('financeForm');
-        form.dataset.eventId = eventId;
-        delete form.dataset.editId;
-        
-		const familyGroup = document.getElementById('familyGroup');
-		const categoryGroup = document.getElementById('categoryGroup');
-		const paymentModeSelect = document.getElementById('paymentModeSelect');
-        
-		// Reset form
-		document.getElementById('financeForm').reset();
-        document.getElementById('financeType').value = type;
-        document.getElementById('dateInput').value = new Date().toISOString().split('T')[0];
-        
-        if (type === 'expense') {
-            document.getElementById('financeModalTitle').textContent = 'Add Expense';
-            familyGroup.style.display = 'none';
-            categoryGroup.style.display = 'block';
-            
-            // Populate categories
-            const categories = this.dataManager.getExpenseCategories();
-            // populate datalist & input
-            const categoryInput = document.getElementById('categoryInput');
-            const categorySuggestions = document.getElementById('categorySuggestions');
-            if (categorySuggestions) categorySuggestions.innerHTML = categories.map(cat => `<option value="${cat}"></option>`).join('');
-            if (categoryInput) categoryInput.value = '';
-        } else {
-            document.getElementById('financeModalTitle').textContent = 'Add Family Contribution';
-            familyGroup.style.display = 'block';
-            categoryGroup.style.display = 'none';
-            
-            // Populate families
-            const families = this.dataManager.getFamilyNames();
-            const familyInput = document.getElementById('familyInput');
-            const familySuggestions = document.getElementById('familySuggestions');
-            if (familySuggestions) familySuggestions.innerHTML = families.map(family => `<option value="${family}"></option>`).join('');
-            if (familyInput) familyInput.value = '';
-        }
-        
-        // Populate payment modes
-        const paymentModes = this.dataManager.getPaymentModes();
-		paymentModeSelect.innerHTML = paymentModes.map(mode => `<option value="${mode}">${mode}</option>`).join('');
-        
-		this.showModal('financeModal');
-    }
-
-    handleFinanceForm() {
-        if (!this.requireAdmin()) return;
-        const form = document.getElementById('financeForm');
-        const eventId = form.dataset.eventId;
-        const type = document.getElementById('financeType').value;
-        const editId = form.dataset.editId || null;
-        
-        const data = {
-            amount: parseFloat(document.getElementById('amountInput').value) || 0,
-            paymentMode: document.getElementById('paymentModeSelect').value,
-            description: document.getElementById('descriptionInput').value.trim(),
-            date: document.getElementById('dateInput').value
-        };
-        
-        if (data.amount <= 0) {
-            this.showToast('Please enter a valid amount', 'error');
-            return;
-        }
-        
-        let success = false;
-        
-        if (type === 'expense') {
-            // allow custom category via input
-            data.category = (document.getElementById('categoryInput') || {}).value || document.getElementById('categorySelect') && document.getElementById('categorySelect').value;
-            if (editId) {
-                success = this.dataManager.updateExpense(eventId, editId, data);
-            } else {
-                success = this.dataManager.addExpense(eventId, data);
-            }
-        } else {
-            data.family = (document.getElementById('familyInput') || {}).value || document.getElementById('familySelect') && document.getElementById('familySelect').value;
-            if (editId) {
-                success = this.dataManager.updateIncome(eventId, editId, data);
-            } else {
-                success = this.dataManager.addIncome(eventId, data);
-            }
-        }
-        
-        if (success) {
-            // Update current event if modal is open
-            if (this.currentEvent && this.currentEvent.id == eventId) {
-                this.currentEvent = this.dataManager.getEvent(eventId);
-                this.populateEventModal(this.currentEvent);
-            }
-            
-            this.renderEvents();
-            this.renderAnalytics();
-            // Close only the finance modal and stay on the event details (finances tab)
-            this.closeModal('financeModal');
-            // Ensure finances tab is active
-            const financeTabBtn = document.querySelector('.tab-btn[data-tab="finances"]');
-            if (financeTabBtn) financeTabBtn.click();
-            this.showToast(`${type === 'expense' ? 'Expense' : 'Contribution'} added successfully`, 'success');
-        } else {
-            this.showToast(`Failed to add ${type}`, 'error');
-        }
-    }
-
-    // Edit a finance item (expense or income)
-    editFinanceItem(eventId, type, itemId) {
-        if (!this.requireAdmin()) return;
-        const event = this.dataManager.getEvent(eventId);
-        if (!event) return this.showToast('Event not found', 'error');
-
-        let item;
-        if (type === 'expense') item = event.expenses.find(e => e.id === parseInt(itemId));
-        else item = event.income.find(i => i.id === parseInt(itemId));
-
-        if (!item) return this.showToast('Item not found', 'error');
-
-        // Pre-fill form
-        document.getElementById('financeType').value = type;
-        document.getElementById('financeForm').dataset.eventId = eventId;
-        document.getElementById('financeForm').dataset.editId = itemId;
-        document.getElementById('amountInput').value = item.amount;
-        document.getElementById('paymentModeSelect').value = item.paymentMode || this.dataManager.getPaymentModes()[0];
-        document.getElementById('descriptionInput').value = item.description || '';
-        document.getElementById('dateInput').value = item.date || new Date().toISOString().split('T')[0];
-
-        if (type === 'expense') {
-            document.getElementById('categoryInput').value = item.category || '';
-            document.getElementById('familyGroup').style.display = 'none';
-            document.getElementById('categoryGroup').style.display = 'block';
-            document.getElementById('financeModalTitle').textContent = 'Edit Expense';
-        } else {
-            document.getElementById('familyInput').value = item.family || '';
-            document.getElementById('familyGroup').style.display = 'block';
-            document.getElementById('categoryGroup').style.display = 'none';
-            document.getElementById('financeModalTitle').textContent = 'Edit Contribution';
-        }
-
-        this.showModal('financeModal');
-    }
-
-    // Edit an activity
-    editActivity(eventId, activityId) {
-        if (!this.requireAdmin()) return;
-        const event = this.dataManager.getEvent(eventId);
-        if (!event) return this.showToast('Event not found', 'error');
-
-        const activity = event.activities.find(a => a.id === parseInt(activityId));
-        if (!activity) return this.showToast('Activity not found', 'error');
-
-        const form = document.getElementById('activityForm');
-        form.dataset.eventId = eventId;
-        form.dataset.editId = activityId;
-        document.getElementById('activityNameInput').value = activity.name || '';
-        document.getElementById('participantsInput').value = activity.participants || '';
-        document.getElementById('timeInput').value = activity.time || '10:00';
-        document.getElementById('durationInput').value = activity.duration || '';
-        document.getElementById('locationInput').value = activity.location || '';
-        document.getElementById('activityDescInput').value = activity.description || '';
-
-        this.showModal('activityModal');
-    }
-
-    deleteFinanceItem(eventId, itemType, itemId) {
-        if (!this.requireAdmin()) return;
-        const itemName = itemType === 'expense' ? 'expense' : 'contribution';
-        
-        if (confirm(`Are you sure you want to delete this ${itemName}?`)) {
-            if (this.dataManager.deleteFinanceItem(eventId, itemType, itemId)) {
-                // Update current event if modal is open
-                if (this.currentEvent && this.currentEvent.id == eventId) {
-                    this.currentEvent = this.dataManager.getEvent(eventId);
-                    this.populateEventModal(this.currentEvent);
-                }
-                
-                this.renderEvents();
-                this.renderAnalytics();
-                this.showToast(`${itemName} deleted successfully`, 'success');
-            } else {
-                this.showToast(`Failed to delete ${itemName}`, 'error');
-            }
-        }
-    }
-
-    // Activity operations
-    showActivityModal(eventId) {
-        if (!this.requireAdmin()) return;
-        const form = document.getElementById('activityForm');
-        form.reset();
-        form.dataset.eventId = eventId;
-        delete form.dataset.editId;
-        document.getElementById('timeInput').value = '10:00';
-        this.showModal('activityModal');
-    }
-
-    handleActivityForm() {
-        if (!this.requireAdmin()) return;
-        const form = document.getElementById('activityForm');
-        const eventId = form.dataset.eventId;
-        const editId = form.dataset.editId || null;
-
-        const activityData = {
-            name: document.getElementById('activityNameInput').value.trim(),
-            participants: document.getElementById('participantsInput').value.trim(),
-            time: document.getElementById('timeInput').value,
-            duration: document.getElementById('durationInput').value.trim(),
-            location: document.getElementById('locationInput').value.trim(),
-            description: document.getElementById('activityDescInput').value.trim()
-        };
-        
-        if (!activityData.name || !activityData.participants || !activityData.time) {
-            this.showToast('Please fill in all required fields', 'error');
-            return;
-        }
-        
-        let success = false;
-        if (editId) {
-            const updated = this.dataManager.updateActivity(eventId, editId, activityData);
-            success = !!updated;
-        } else {
-            success = !!this.dataManager.addActivity(eventId, activityData);
-        }
-
-        if (success) {
-            // Update current event if modal is open
-            if (this.currentEvent && this.currentEvent.id == eventId) {
-                this.currentEvent = this.dataManager.getEvent(eventId);
-                this.populateEventModal(this.currentEvent);
-            }
-            this.closeAllModals();
-            this.showToast(editId ? 'Activity updated successfully' : 'Activity added successfully', 'success');
-        } else {
-            this.showToast(editId ? 'Failed to update activity' : 'Failed to add activity', 'error');
-        }
-    }
-
-    deleteActivity(eventId, activityId) {
-        if (!this.requireAdmin()) return;
-        if (confirm('Are you sure you want to delete this activity?')) {
-            if (this.dataManager.deleteActivity(eventId, activityId)) {
-                // Update current event if modal is open
-                if (this.currentEvent && this.currentEvent.id == eventId) {
-                    this.currentEvent = this.dataManager.getEvent(eventId);
-                    this.populateEventModal(this.currentEvent);
-                }
-                
-                this.showToast('Activity deleted successfully', 'success');
-            } else {
-                this.showToast('Failed to delete activity', 'error');
-            }
-        }
-    }
-
-    // Analytics and Charts
     renderAnalytics() {
-        this.renderBudgetChart();
-        this.renderContributionChart();
-        this.renderExpenseChart();
-        this.renderPaymentChart();
+        const events = this.dataManager.getEvents();
+        this.renderBudgetChart(events);
+        this.renderContributionChart(events);
+        this.renderExpenseChart(events);
+        this.renderPaymentChart(events);
     }
 
-    renderBudgetChart() {
-        const ctx = document.getElementById('budgetChart').getContext('2d');
-        const events = this.dataManager.getEvents();
-        
-        const data = events.map(event => {
-            const totalExpenses = event.expenses.reduce((sum, exp) => sum + exp.amount, 0);
-            const totalIncome = event.income.reduce((sum, inc) => sum + inc.amount, 0);
-            return {
-                event: event.name.length > 15 ? event.name.substring(0, 15) + '...' : event.name,
-                budget: event.totalBudget,
-                expenses: totalExpenses,
-                income: totalIncome
-            };
-        });
-        
-        if (this.charts.budget) {
-            this.charts.budget.destroy();
-        }
-        
-        this.charts.budget = new Chart(ctx, {
-            type: 'bar',
+    renderBudgetChart(events) {
+        const eventNames = events.map(event => event.name);
+        const totalBudgets = events.map(event => event.totalBudget || 0);
+        const totalExpenses = events.map(event =>
+            event.expenses ? event.expenses.reduce((sum, exp) => sum + exp.amount, 0) : 0
+        );
+
+        if (this.budgetChart) this.budgetChart.destroy();
+        this.budgetChart = new Chart(this.budgetChartCtx, {
+            type: "bar",
             data: {
-                labels: data.map(d => d.event),
+                labels: eventNames,
                 datasets: [
                     {
-                        label: 'Budget',
-                        data: data.map(d => d.budget),
-                        backgroundColor: '#3b82f6',
-                        borderRadius: 8,
-                        borderSkipped: false
+                        label: "Total Budget",
+                        data: totalBudgets,
+                        backgroundColor: "rgba(75, 192, 192, 0.6)",
+                        borderColor: "rgba(75, 192, 192, 1)",
+                        borderWidth: 1
                     },
                     {
-                        label: 'Expenses',
-                        data: data.map(d => d.expenses),
-                        backgroundColor: '#ef4444',
-                        borderRadius: 8,
-                        borderSkipped: false
-                    },
-                    {
-                        label: 'Income',
-                        data: data.map(d => d.income),
-                        backgroundColor: '#22c55e',
-                        borderRadius: 8,
-                        borderSkipped: false
+                        label: "Total Expenses",
+                        data: totalExpenses,
+                        backgroundColor: "rgba(255, 99, 132, 0.6)",
+                        borderColor: "rgba(255, 99, 132, 1)",
+                        borderWidth: 1
                     }
                 ]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 20,
-                            usePointStyle: true
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return context.dataset.label + ': ₹' + context.parsed.y.toLocaleString();
-                            }
-                        }
-                    }
-                },
+                maintainAspectRatio: true,
+                aspectRatio: 2,
                 scales: {
                     y: {
                         beginAtZero: true,
-                        ticks: {
-                            callback: function(value) {
-                                return '₹' + value.toLocaleString();
-                            }
-                        },
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    renderContributionChart() {
-        const ctx = document.getElementById('contributionChart').getContext('2d');
-        const events = this.dataManager.getEvents();
-        
-        const familyContributions = {};
-        events.forEach(event => {
-            event.income.forEach(income => {
-                const family = income.family.length > 20 ? income.family.substring(0, 20) + '...' : income.family;
-                familyContributions[family] = (familyContributions[family] || 0) + income.amount;
-            });
-        });
-        
-        if (this.charts.contribution) {
-            this.charts.contribution.destroy();
-        }
-        
-        const colors = ['#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#22c55e', '#f97316', '#ec4899', '#14b8a6'];
-        
-        this.charts.contribution = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: Object.keys(familyContributions),
-                datasets: [{
-                    data: Object.values(familyContributions),
-                    backgroundColor: colors.slice(0, Object.keys(familyContributions).length),
-                    borderWidth: 0,
-                    hoverBorderWidth: 2,
-                    hoverBorderColor: '#ffffff'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 15,
-                            usePointStyle: true
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
-                                const percentage = ((context.parsed / total) * 100).toFixed(1);
-                                return context.label + ': ₹' + context.parsed.toLocaleString() + ' (' + percentage + '%)';
-                            }
-                        }
+                        ticks: { callback: (value) => `₹${value.toLocaleString("en-IN")}` }
                     }
                 },
-                cutout: '60%'
+                plugins: {
+                    tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ₹${context.parsed.y.toLocaleString("en-IN")}` } }
+                }
             }
         });
     }
 
-    renderExpenseChart() {
-        const ctx = document.getElementById('expenseChart').getContext('2d');
-        const events = this.dataManager.getEvents();
-        
-        const categoryExpenses = {};
+    renderContributionChart(events) {
+        const familyContributions = {};
         events.forEach(event => {
-            event.expenses.forEach(expense => {
-                categoryExpenses[expense.category] = (categoryExpenses[expense.category] || 0) + expense.amount;
+            event.income?.forEach(inc => {
+                familyContributions[inc.family] = (familyContributions[inc.family] || 0) + inc.amount;
             });
         });
-        
-        if (this.charts.expense) {
-            this.charts.expense.destroy();
-        }
-        
-        const colors = ['#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#22c55e', '#f97316', '#ec4899', '#14b8a6', '#6366f1', '#84cc16'];
-        
-        this.charts.expense = new Chart(ctx, {
-            type: 'pie',
+
+        const labels = Object.keys(familyContributions);
+        const data = Object.values(familyContributions);
+
+        if (this.contributionChart) this.contributionChart.destroy();
+        this.contributionChart = new Chart(this.contributionChartCtx, {
+            type: "doughnut",
             data: {
-                labels: Object.keys(categoryExpenses),
+                labels: labels,
                 datasets: [{
-                    data: Object.values(categoryExpenses),
-                    backgroundColor: colors.slice(0, Object.keys(categoryExpenses).length),
-                    borderWidth: 0,
-                    hoverBorderWidth: 2,
-                    hoverBorderColor: '#ffffff'
+                    data: data,
+                    backgroundColor: [
+                        "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40"
+                    ],
+                    hoverOffset: 4
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
+                aspectRatio: 1.5,
                 plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 15,
-                            usePointStyle: true
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
-                                const percentage = ((context.parsed / total) * 100).toFixed(1);
-                                return context.label + ': ₹' + context.parsed.toLocaleString() + ' (' + percentage + '%)';
-                            }
-                        }
-                    }
+                    tooltip: { callbacks: { label: (context) => `${context.label}: ₹${context.parsed.toLocaleString("en-IN")}` } }
                 }
             }
         });
     }
 
-    renderPaymentChart() {
-        // Add payment mode distribution chart if needed
-    }
+    renderExpenseChart(events) {
+        const expenseCategories = {};
+        events.forEach(event => {
+            event.expenses?.forEach(exp => {
+                expenseCategories[exp.category] = (expenseCategories[exp.category] || 0) + exp.amount;
+            });
+        });
 
-    // Modal management
-    showModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.classList.remove('hidden');
-            // Only lock body scroll for blocking modals. Some modals (like adminPanel)
-            // should allow page scrolling — they will carry the class `modal--allow-scroll`.
-            if (!modal.classList.contains('modal--allow-scroll')) {
-                document.body.style.overflow = 'hidden';
-            }
-            
-            // Focus first input
-            setTimeout(() => {
-                const firstInput = modal.querySelector('input:not([type="hidden"]), textarea, select');
-                if (firstInput) {
-                    firstInput.focus();
+        const labels = Object.keys(expenseCategories);
+        const data = Object.values(expenseCategories);
+
+        if (this.expenseChart) this.expenseChart.destroy();
+        this.expenseChart = new Chart(this.expenseChartCtx, {
+            type: "pie",
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: [
+                        "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#58508D", "#BC5090"
+                    ],
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1.5,
+                plugins: {
+                    tooltip: { callbacks: { label: (context) => `${context.label}: ₹${context.parsed.toLocaleString("en-IN")}` } }
                 }
-            }, 100);
-        }
-    }
-
-    closeModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.classList.add('hidden');
-        }
-    }
-
-    closeAllModals() {
-        document.querySelectorAll('.modal').forEach(modal => {
-            modal.classList.add('hidden');
-        });
-        // Only reset overflow if no allow-scroll modals were open
-        document.body.style.overflow = '';
-    }
-
-    // Toast notifications
-    showToast(message, type = 'success') {
-        const toastId = type === 'error' ? 'errorToast' : 'successToast';
-        const toast = document.getElementById(toastId);
-        const messageEl = toast.querySelector('.toast-message');
-        
-        messageEl.textContent = message;
-        toast.classList.remove('hidden');
-        
-        setTimeout(() => {
-            toast.classList.add('hidden');
-        }, 3000);
-    }
-
-    // Utility methods
-    formatCurrency(amount) {
-        return new Intl.NumberFormat('en-IN').format(amount);
-    }
-
-    formatDate(dateString) {
-        return new Date(dateString).toLocaleDateString('en-IN', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
+            }
         });
     }
 
-    formatTime(timeString) {
-        return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-IN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
+    renderPaymentChart(events) {
+        const paymentMethods = {};
+        events.forEach(event => {
+            event.expenses?.forEach(exp => {
+                paymentMethods[exp.paymentMode] = (paymentMethods[exp.paymentMode] || 0) + exp.amount;
+            });
+            event.income?.forEach(inc => {
+                paymentMethods[inc.paymentMode] = (paymentMethods[inc.paymentMode] || 0) + inc.amount;
+            });
+        });
+
+        const labels = Object.keys(paymentMethods);
+        const data = Object.values(paymentMethods);
+
+        if (this.paymentChart) this.paymentChart.destroy();
+        this.paymentChart = new Chart(this.paymentChartCtx, {
+            type: "polarArea",
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: [
+                        "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF"
+                    ],
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1.2,
+                plugins: {
+                    tooltip: { callbacks: { label: (context) => `${context.label}: ₹${context.parsed.toLocaleString("en-IN")}` } }
+                }
+            }
         });
     }
 
-    // Require admin helper - returns true if admin, otherwise shows a toast and returns false
-    requireAdmin() {
-        if (!this.isAdmin) {
-            this.showToast('Admin access required to perform this action', 'error');
-            return false;
+    openEventModal(eventId = null) {
+        this.eventModal.classList.remove("hidden");
+        this.currentEventId = eventId;
+        this.resetEventForm();
+        this.deleteEventBtn.classList.add("hidden"); // Hide delete by default
+
+        if (eventId) {
+            this.eventModalTitle.textContent = "Edit Event";
+            const event = this.dataManager.getEventById(eventId);
+            if (event) {
+                this.fillEventForm(event);
+                if (this.isUserAdmin) {
+                    this.deleteEventBtn.classList.remove("hidden");
+                }
+            }
+        } else {
+            this.eventModalTitle.textContent = "Add New Event";
         }
-        return true;
+            // Default to the Overview tab in current markup
+            const defaultTab = document.querySelector(".tab-btn[data-tab='overview']") || this.eventTabs[0];
+            if (defaultTab) this.switchEventTab(defaultTab);
+        this.updateAdminControlsInModal();
     }
-}
 
-// Global functions for inline event handlers
-window.scrollToSection = function(sectionId) {
-    if (window.app) {
-        window.app.scrollToSection(sectionId);
+    closeEventModal() {
+        this.eventModal.classList.add("hidden");
+        this.currentEventId = null;
+        this.resetEventForm();
     }
-};
 
-// Global app instance
-let app;
+    resetEventForm() {
+        this.eventForm.reset();
+        this.financesTableBody.innerHTML = "";
+        this.activitiesTableBody.innerHTML = "";
+        document.getElementById("eventGooglePhotosLinkPreview").innerHTML = "";
+        // Clear any dynamically added finance/activity rows
+        const dynamicRows = document.querySelectorAll(".finance-row, .activity-row");
+        dynamicRows.forEach(row => row.remove());
+    }
 
-// Initialize app when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    try {
-        app = new UIController();
-        
-        // Expose methods to global scope for inline event handlers
-        window.app = {
-            instance: app,
-            showEventDetails: (id) => app.showEventDetails(id),
-            editEvent: (id) => app.editEvent(id),
-            deleteEvent: (id) => app.deleteEvent(id),
-            deleteFinanceItem: (eventId, type, id) => app.deleteFinanceItem(eventId, type, id),
-            editFinanceItem: (eventId, type, id) => app.editFinanceItem(eventId, type, id),
-            deleteActivity: (eventId, id) => app.deleteActivity(eventId, id),
-            editActivity: (eventId, id) => app.editActivity(eventId, id),
-            clearFilters: () => app.clearFilters(),
-            scrollToSection: (id) => app.scrollToSection(id)
+    fillEventForm(event) {
+        this.eventNameInput.value = event.name || "";
+        this.eventYearInput.value = event.year || "";
+        this.eventDateInput.value = event.date || "";
+        this.eventBudgetInput.value = event.totalBudget || "";
+        this.eventVenueInput.value = event.venue || "";
+        this.eventGuestsInput.value = event.expectedGuests || "";
+        this.eventDescriptionInput.value = event.description || "";
+        this.eventPhotosInput.value = event.googlePhotosLink || "";
+        this.eventStatusInput.value = event.status || "upcoming";
+
+        // Render finances
+        this.financesTableBody.innerHTML = "";
+        event.expenses?.forEach(expense => this.addFinanceRow("expenses", expense));
+        event.income?.forEach(income => this.addFinanceRow("income", income));
+
+        // Render activities
+        this.activitiesTableBody.innerHTML = "";
+        event.activities?.forEach(activity => this.addActivityRow(activity));
+
+        this.updateGooglePhotosLinkPreview(event.googlePhotosLink);
+    }
+
+    async saveEvent() {
+        const eventData = {
+            name: this.eventNameInput.value,
+            year: parseInt(this.eventYearInput.value),
+            date: this.eventDateInput.value,
+            totalBudget: parseFloat(this.eventBudgetInput.value),
+            venue: this.eventVenueInput.value,
+            expectedGuests: parseInt(this.eventGuestsInput.value),
+            description: this.eventDescriptionInput.value,
+            googlePhotosLink: this.eventPhotosInput.value,
+            status: this.eventStatusInput.value,
+            expenses: [], // Will be populated from table
+            income: [], // Will be populated from table
+            activities: [] // Will be populated from table
         };
-        
-        // Initialize navbar functionality
-        initializeNavbar();
-        initializeAnalyticsFullscreen();
-        initializePasswordToggle();
-        
-        // Load events from Firestore on startup and merge into local state
-        (async () => {
-            try {
-                const remoteEvents = await loadEvents();
-                if (Array.isArray(remoteEvents) && remoteEvents.length) {
-                    const current = app.dataManager.getData();
-                    const existingIds = new Set((current.events || []).map(e => String(e.id)));
-                    let added = 0;
-                    remoteEvents.forEach(ev => {
-                        const rid = String(ev.id || ev.firestoreId);
-                        if (!existingIds.has(rid)) {
-                            current.events.push({
-                                id: rid,
-                                name: ev.name || 'Untitled Event',
-                                year: ev.year || new Date(ev.date || Date.now()).getFullYear(),
-                                date: ev.date || new Date().toISOString().slice(0,10),
-                                totalBudget: Number(ev.totalBudget || ev.budget || 0),
-                                description: ev.description || '',
-                                venue: ev.venue || '',
-                                expectedGuests: Number(ev.expectedGuests || ev.guests || 0),
-                                googlePhotosLink: ev.googlePhotosLink || ev.photos || '',
-                                expenses: Array.isArray(ev.expenses) ? ev.expenses : [],
-                                income: Array.isArray(ev.income) ? ev.income : [],
-                                activities: Array.isArray(ev.activities) ? ev.activities : [],
-                                images: Array.isArray(ev.images) ? ev.images : [],
-                                status: new Date(ev.date || Date.now()) > new Date() ? 'upcoming' : 'completed'
-                            });
-                            added++;
-                        }
-                    });
-                    if (added > 0) {
-                        app.dataManager.setData(current);
-                        app.renderEvents();
-                        app.updateHeroStats();
-                        app.renderAnalytics();
-                    }
-                }
-            } catch (e) {
-                console.warn('Failed to load events from Firestore:', e?.message || e);
-            }
-        })();
 
-    console.log('✅ Vallamkonda Finance - Family Event Management System initialized (Firestore)');
-    } catch (error) {
-        console.error('❌ Failed to initialize application:', error);
-    }
-});
-
-// Modern Navbar Functionality
-function initializeNavbar() {
-    const header = document.querySelector('.header');
-    const navToggle = document.querySelector('.nav__toggle');
-    const navMenu = document.querySelector('.nav__menu');
-    const navLinks = document.querySelectorAll('.nav__link');
-    
-    // Mobile menu toggle
-    if (navToggle && navMenu) {
-        navToggle.addEventListener('click', () => {
-            // Use 'open' so it matches the CSS (.nav__menu.open)
-            navToggle.classList.toggle('open');
-            navMenu.classList.toggle('open');
-        });
-        
-        // Close mobile menu when clicking on links
-        navLinks.forEach(link => {
-            link.addEventListener('click', () => {
-                navToggle.classList.remove('open');
-                navMenu.classList.remove('open');
+        // Populate expenses from table
+        document.querySelectorAll("#financesTableBody tr.expense-row").forEach(row => {
+            eventData.expenses.push({
+                id: row.dataset.id || this.dataManager.generateUniqueId(),
+                category: row.querySelector('select[name="expenseCategory"]').value,
+                amount: parseFloat(row.querySelector('input[name="expenseAmount"]').value),
+                paymentMode: row.querySelector('select[name="expensePaymentMode"]').value,
+                description: row.querySelector('input[name="expenseDescription"]').value,
+                date: row.querySelector('input[name="expenseDate"]').value,
+                vendor: row.querySelector('input[name="expenseVendor"]').value
             });
         });
-        
-        // Close mobile menu when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.nav') && navMenu.classList.contains('open')) {
-                    navToggle.classList.remove('open');
-                    navMenu.classList.remove('open');
-                }
+
+        // Populate income from table
+        document.querySelectorAll("#financesTableBody tr.income-row").forEach(row => {
+            eventData.income.push({
+                id: row.dataset.id || this.dataManager.generateUniqueId(),
+                family: row.querySelector('select[name="incomeFamily"]').value,
+                amount: parseFloat(row.querySelector('input[name="incomeAmount"]').value),
+                paymentMode: row.querySelector('select[name="incomePaymentMode"]').value,
+                date: row.querySelector('input[name="incomeDate"]').value,
+                contactPerson: row.querySelector('input[name="incomeContactPerson"]').value,
+                phone: row.querySelector('input[name="incomePhone"]').value
+            });
         });
+
+        // Populate activities from table
+        document.querySelectorAll("#activitiesTableBody tr.activity-row").forEach(row => {
+            eventData.activities.push({
+                id: row.dataset.id || this.dataManager.generateUniqueId(),
+                name: row.querySelector('input[name="activityName"]').value,
+                participants: row.querySelector('input[name="activityParticipants"]').value,
+                time: row.querySelector('input[name="activityTime"]').value,
+                duration: row.querySelector('input[name="activityDuration"]').value,
+                description: row.querySelector('input[name="activityDescription"]').value,
+                location: row.querySelector('input[name="activityLocation"]').value,
+                incharge: row.querySelector('input[name="activityIncharge"]').value
+            });
+        });
+
+        if (this.currentEventId) {
+            eventData.id = this.currentEventId; // Ensure ID is set for update
+            await this.dataManager.updateEvent(eventData);
+        } else {
+            await this.dataManager.addEvent(eventData);
+        }
+
+        this.closeEventModal();
+        this.renderAll(); // Re-render to show updated data
     }
-    
-    // Scroll effects
-    if (header) {
-        let lastScrollY = window.scrollY;
-        
-        window.addEventListener('scroll', () => {
-            const currentScrollY = window.scrollY;
-            
-            // Add scrolled class for styling
-            if (currentScrollY > 50) {
-                header.classList.add('scrolled');
+
+    async deleteEvent() {
+        if (this.currentEventId && confirm("Are you sure you want to delete this event?")) {
+            await this.dataManager.deleteEvent(this.currentEventId);
+            this.closeEventModal();
+            this.renderAll();
+        }
+    }
+
+    switchEventTab(clickedTab) {
+        this.eventTabs.forEach(tab => tab.classList.remove("active"));
+        clickedTab.classList.add("active");
+
+        const targetTab = clickedTab.dataset.tab;
+        this.eventTabContents.forEach(content => {
+            if (content.id === `event-modal__tab-${targetTab}`) {
+                content.classList.add("active");
             } else {
-                header.classList.remove('scrolled');
+                content.classList.remove("active");
             }
-            
-            lastScrollY = currentScrollY;
         });
     }
-    
-    // Active nav link highlighting
-    updateActiveNavLink();
-    window.addEventListener('scroll', updateActiveNavLink);
+
+    addFinanceItem(type, item = {}) {
+        const isExpense = type === "expenses";
+        const row = document.createElement("tr");
+        row.className = `finance-row ${isExpense ? "expense-row" : "income-row"}`;
+        row.dataset.id = item.id || this.dataManager.generateUniqueId();
+
+        let cellsHtml = "";
+        if (isExpense) {
+            cellsHtml = `
+                <td>
+                    <select name="expenseCategory" class="form-input" ${this.isUserAdmin ? "" : "disabled"}>
+                        ${this.dataManager.getExpenseCategories().map(cat => `<option value="${cat}" ${item.category === cat ? "selected" : ""}>${cat}</option>`).join("")}
+                    </select>
+                </td>
+                <td><input type="number" name="expenseAmount" class="form-input" value="${item.amount || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+                <td>
+                    <select name="expensePaymentMode" class="form-input" ${this.isUserAdmin ? "" : "disabled"}>
+                        ${this.dataManager.getPaymentModes().map(mode => `<option value="${mode}" ${item.paymentMode === mode ? "selected" : ""}>${mode}</option>`).join("")}
+                    </select>
+                </td>
+                <td><input type="text" name="expenseDescription" class="form-input" value="${item.description || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+                <td><input type="date" name="expenseDate" class="form-input" value="${item.date || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+                <td><input type="text" name="expenseVendor" class="form-input" value="${item.vendor || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+            `;
+        } else {
+            cellsHtml = `
+                <td>
+                    <select name="incomeFamily" class="form-input" ${this.isUserAdmin ? "" : "disabled"}>
+                        ${this.dataManager.getFamilies().map(fam => `<option value="${fam.name}" ${item.family === fam.name ? "selected" : ""}>${fam.name}</option>`).join("")}
+                    </select>
+                </td>
+                <td><input type="number" name="incomeAmount" class="form-input" value="${item.amount || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+                <td>
+                    <select name="incomePaymentMode" class="form-input" ${this.isUserAdmin ? "" : "disabled"}>
+                        ${this.dataManager.getPaymentModes().map(mode => `<option value="${mode}" ${item.paymentMode === mode ? "selected" : ""}>${mode}</option>`).join("")}
+                    </select>
+                </td>
+                <td><input type="date" name="incomeDate" class="form-input" value="${item.date || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+                <td><input type="text" name="incomeContactPerson" class="form-input" value="${item.contactPerson || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+                <td><input type="text" name="incomePhone" class="form-input" value="${item.phone || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+            `;
+        }
+
+        row.innerHTML = `
+            ${cellsHtml}
+            <td class="admin-only ${this.isUserAdmin ? "" : "hidden"}">
+                <button type="button" class="btn btn--danger btn--sm delete-finance-item" data-type="${type}" data-id="${row.dataset.id}">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        `;
+        this.financesTableBody.appendChild(row);
+
+        if (this.isUserAdmin) {
+            row.querySelector(".delete-finance-item").addEventListener("click", (e) => this.deleteFinanceItem(e.currentTarget.dataset.type, e.currentTarget.dataset.id));
+        }
+    }
+
+    addActivityRow(activity = {}) {
+        const row = document.createElement("tr");
+        row.className = "activity-row";
+        row.dataset.id = activity.id || this.dataManager.generateUniqueId();
+
+        row.innerHTML = `
+            <td><input type="text" name="activityName" class="form-input" value="${activity.name || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+            <td><input type="text" name="activityParticipants" class="form-input" value="${activity.participants || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+            <td><input type="time" name="activityTime" class="form-input" value="${activity.time || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+            <td><input type="text" name="activityDuration" class="form-input" value="${activity.duration || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+            <td><input type="text" name="activityDescription" class="form-input" value="${activity.description || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+            <td><input type="text" name="activityLocation" class="form-input" value="${activity.location || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+            <td><input type="text" name="activityIncharge" class="form-input" value="${activity.incharge || ""}" ${this.isUserAdmin ? "" : "readonly"}></td>
+            <td class="admin-only ${this.isUserAdmin ? "" : "hidden"}">
+                <button type="button" class="btn btn--danger btn--sm delete-activity-item" data-id="${row.dataset.id}">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        `;
+        this.activitiesTableBody.appendChild(row);
+
+        if (this.isUserAdmin) {
+            row.querySelector(".delete-activity-item").addEventListener("click", (e) => this.deleteActivityItem(e.currentTarget.dataset.id));
+        }
+    }
+
+    addActivityItem() {
+        this.addActivityRow({});
+    }
+
+    async deleteFinanceItem(type, id) {
+        if (this.currentEventId && confirm("Are you sure you want to delete this item?")) {
+            await this.dataManager.deleteSubItem(this.currentEventId, type, id);
+            this.renderAll(); // Re-render to update the modal content
+        }
+    }
+
+    async deleteActivityItem(id) {
+        if (this.currentEventId && confirm("Are you sure you want to delete this activity?")) {
+            await this.dataManager.deleteSubItem(this.currentEventId, "activities", id);
+            this.renderAll(); // Re-render to update the modal content
+        }
+    }
+
+    updateGooglePhotosLinkPreview(link) {
+        const previewContainer = document.getElementById("eventGooglePhotosLinkPreview");
+        previewContainer.innerHTML = "";
+        if (link) {
+            const linkElement = document.createElement("a");
+            linkElement.href = link;
+            linkElement.textContent = "View Photos";
+            linkElement.target = "_blank";
+            linkElement.className = "btn btn--secondary btn--sm mt-2";
+            previewContainer.appendChild(linkElement);
+        }
+    }
+
+    updateAdminControlsInModal() {
+        const adminOnlyElements = this.eventModal.querySelectorAll(".admin-only");
+        if (this.isUserAdmin) {
+            this.eventForm.querySelectorAll("input, select, textarea").forEach(el => el.removeAttribute("readonly"));
+            this.eventForm.querySelectorAll("select").forEach(el => el.removeAttribute("disabled"));
+            this.saveEventBtn.classList.remove("hidden");
+            this.addExpenseBtn.classList.remove("hidden");
+            this.addIncomeBtn.classList.remove("hidden");
+            this.addActivityBtn.classList.remove("hidden");
+            adminOnlyElements.forEach(el => el.classList.remove("hidden"));
+        } else {
+            this.eventForm.querySelectorAll("input, select, textarea").forEach(el => el.setAttribute("readonly", true));
+            this.eventForm.querySelectorAll("select").forEach(el => el.setAttribute("disabled", true));
+            this.saveEventBtn.classList.add("hidden");
+            this.addExpenseBtn.classList.add("hidden");
+            this.addIncomeBtn.classList.add("hidden");
+            this.addActivityBtn.classList.add("hidden");
+            adminOnlyElements.forEach(el => el.classList.add("hidden"));
+        }
+    }
+
+    toggleFilterSortOptions() {
+        // Implement filter/sort UI logic here if needed
+        console.log("Filter/Sort button clicked.");
+    }
+
+    // Particles.js initialization (from original file)
+    initParticles() {
+        particlesJS("particles-js", {
+            particles: {
+                number: { value: 80, density: { enable: true, value_area: 800 } },
+                color: { value: "#ffffff" },
+                shape: {
+                    type: "circle",
+                    stroke: { width: 0, color: "#000000" },
+                    polygon: { nb_sides: 5 },
+                    image: { src: "img/github.svg", width: 100, height: 100 }
+                },
+                opacity: {
+                    value: 0.5,
+                    random: false,
+                    anim: { enable: false, speed: 1, opacity_min: 0.1, sync: false }
+                },
+                size: {
+                    value: 3,
+                    random: true,
+                    anim: { enable: false, speed: 40, size_min: 0.1, sync: false }
+                },
+                line_linked: {
+                    enable: true,
+                    distance: 150,
+                    color: "#ffffff",
+                    opacity: 0.4,
+                    width: 1
+                },
+                move: { enable: true, speed: 2, direction: "none", random: false, straight: false, out_mode: "out", bounce: false, attract: { enable: false, rotateX: 600, rotateY: 1200 } }
+            },
+            interactivity: {
+                detect_on: "canvas",
+                events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: true, mode: "push" }, resize: true },
+                modes: { grab: { distance: 400, line_linked: { opacity: 1 } }, bubble: { distance: 400, size: 40, duration: 2, opacity: 8, speed: 3 }, repulse: { distance: 200, duration: 0.4 }, push: { particles_nb: 4 }, remove: { particles_nb: 2 } }
+            },
+            retina_detect: true
+        });
+    }
 }
 
-function updateActiveNavLink() {
-    const sections = document.querySelectorAll('section[id]');
-    const navLinks = document.querySelectorAll('.nav__link');
-    const scrollPosition = window.scrollY + 100;
-    
-    let currentSection = '';
-    
-    sections.forEach(section => {
-        const sectionTop = section.offsetTop;
-        const sectionHeight = section.offsetHeight;
-        
-        if (scrollPosition >= sectionTop && scrollPosition < sectionTop + sectionHeight) {
-            currentSection = section.getAttribute('id');
+// --- DOM Ready ---
+document.addEventListener("DOMContentLoaded", () => {
+    window.app = new App();
+    // Load particles.js separately if it's not part of the main bundle
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js";
+    script.onload = () => {
+        if (window.app && window.app.initParticles) {
+            window.app.initParticles();
         }
-    });
-    
-    navLinks.forEach(link => {
-        link.classList.remove('active');
-        const href = link.getAttribute('href');
-        if (href && href.includes(currentSection)) {
-            link.classList.add('active');
-        }
-    });
-}
-
-// Add/Remove body class for admin visibility gating
-UIController.prototype.updateAdminUI = (function(original){
-    return function(){
-        const res = original.apply(this, arguments);
-        document.body.classList.toggle('is-admin', !!this.isAdmin);
-        // Ensure body can still scroll when admin mode is enabled
-        if (this.isAdmin && document.body.style.overflow === 'hidden') {
-            document.body.style.overflow = '';
-            console.log('Restored body scroll in admin mode');
-        }
-            const adminToggle = document.getElementById('adminToggle');
-            if (adminToggle) adminToggle.setAttribute('aria-pressed', this.isAdmin ? 'true' : 'false');
-        return res;
     };
-})(UIController.prototype.updateAdminUI);
+    document.head.appendChild(script);
 
-// Toggle password visibility in admin modal
-function initializePasswordToggle(){
-    const toggle = document.getElementById('togglePassword');
-    const input = document.getElementById('adminPassword');
-    if(!toggle || !input) return;
-    toggle.addEventListener('click', () => {
-        const isText = input.type === 'text';
-        input.type = isText ? 'password' : 'text';
-        toggle.setAttribute('aria-label', isText ? 'Show password' : 'Hide password');
-        const icon = toggle.querySelector('i');
-        if(icon){ icon.className = isText ? 'fas fa-eye' : 'fas fa-eye-slash'; }
+    // Handle page visibility change to refresh data
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && window.app) {
+            window.app.renderAll();
+        }
     });
-}
-
-// Fullscreen charts per analytics card
-function initializeAnalyticsFullscreen(){
-    document.querySelectorAll('.analytics-card .chart-action').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const card = btn.closest('.analytics-card');
-            if(!card) return;
-            const willFullscreen = !card.classList.contains('fullscreen');
-            document.querySelectorAll('.analytics-card.fullscreen').forEach(c => c.classList.remove('fullscreen'));
-            if(willFullscreen){ card.classList.add('fullscreen'); }
-            // Resize charts if present
-            if (app && app.charts) {
-                setTimeout(() => { Object.values(app.charts).forEach(ch => ch && ch.resize && ch.resize()); }, 50);
-            }
-        });
-    });
-}
-
-// Optionally initialize particles.js if available (non-blocking)
-(function initParticles(){
-    if (!window.particlesJS) return; // user may include particles.js separately
-    const pal1 = getComputedStyle(document.documentElement).getPropertyValue('--pal-1').trim() || '#D6E6F2';
-    const pal2 = getComputedStyle(document.documentElement).getPropertyValue('--pal-2').trim() || '#C8ABE6';
-    const pal3 = getComputedStyle(document.documentElement).getPropertyValue('--pal-3').trim() || '#6EB8E1';
-    window.particlesJS('particles-js', {
-        particles: {
-            number: { value: 60, density: { enable: true, value_area: 800 } },
-            color: { value: [pal2, pal3] },
-            shape: { type: 'circle' },
-            opacity: { value: 0.4, random: true },
-            size: { value: 3, random: true },
-            line_linked: { enable: true, distance: 150, color: pal3, opacity: 0.3, width: 1 },
-            move: { enable: true, speed: 2, out_mode: 'out' }
-        },
-        interactivity: {
-            detect_on: 'canvas',
-            events: { onhover: { enable: true, mode: 'repulse' }, onclick: { enable: false } },
-            modes: { repulse: { distance: 100, duration: 0.4 } }
-        },
-        retina_detect: true
-    });
-})();
-
-// Handle page visibility change to refresh data
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && app) {
-        app.renderEvents();
-        app.updateHeroStats();
-        app.renderAnalytics();
-    }
-});
-
-// Handle window resize for charts
-window.addEventListener('resize', () => {
-    if (app && app.charts) {
-        Object.values(app.charts).forEach(chart => {
-            if (chart && typeof chart.resize === 'function') {
-                chart.resize();
-            }
-        });
-    }
-});
-
-// Ensure mobile hamburger wiring (safe id checks)
-document.addEventListener('DOMContentLoaded', () => {
-    const navToggle = document.getElementById('navToggle');
-    const navMenu = document.getElementById('navMenu');
-    if (navToggle && navMenu) {
-        navToggle.setAttribute('aria-expanded', 'false');
-        navToggle.addEventListener('click', () => {
-            const isOpen = navMenu.classList.toggle('open');
-            navToggle.classList.toggle('open', isOpen);
-            navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        });
-        // close menu when a nav link is clicked (single page nav)
-        navMenu.querySelectorAll('.nav__link').forEach(link => {
-            link.addEventListener('click', () => {
-                if (navMenu.classList.contains('open')) {
-                    navMenu.classList.remove('open');
-                    navToggle.classList.remove('open');
-                    navToggle.setAttribute('aria-expanded', 'false');
-                }
-            });
-        });
-    }
-});
-
-// Mobile navbar hamburger toggle
-document.addEventListener('DOMContentLoaded', () => {
-    const navToggle = document.getElementById('navToggle');
-    const navMenu = document.getElementById('navMenu');
-    if (navToggle && navMenu) {
-        navToggle.addEventListener('click', () => {
-            // use 'open' class for CSS and accessibility
-            navMenu.classList.toggle('open');
-            navToggle.classList.toggle('open');
-            const isOpen = navMenu.classList.contains('open');
-            navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        });
-    }
 });

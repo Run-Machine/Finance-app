@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Flow Test</title>
+    <style>
+        .admin-only { display: none !important; }
+        body.is-admin .admin-only { display: block !important; }
+        
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        
+        .admin-only {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+        }
+        
+        .status.off {
+            background: #ffcccc;
+            color: #c00;
+        }
+        
+        .status.on {
+            background: #ccffcc;
+            color: #0c0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Admin Mode CSS Test</h1>
+    
+    <div class="test-section">
+        <h2>Admin Status</h2>
+        <div class="status off" id="statusBox">Admin Mode: OFF</div>
+        <button onclick="toggleAdminMode()">Toggle Admin Mode</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Admin-Only Elements (should be hidden by default)</h2>
+        <button class="admin-only" id="addEventBtn">Add Event</button>
+        <button class="admin-only" id="addExpenseBtn">Add Expense</button>
+        <button class="admin-only" id="addIncomeBtn">Add Income</button>
+        <button class="admin-only" id="addActivityBtn">Add Activity</button>
+        <div class="admin-only" style="margin-top: 10px; padding: 10px; border: 1px solid #ddd;">Admin-only content should be hidden</div>
+    </div>
+    
+    <script>
+        function toggleAdminMode() {
+            const body = document.body;
+            const statusBox = document.getElementById('statusBox');
+            const isAdmin = body.classList.contains('is-admin');
+            
+            if (isAdmin) {
+                body.classList.remove('is-admin');
+                statusBox.textContent = 'Admin Mode: OFF';
+                statusBox.className = 'status off';
+            } else {
+                body.classList.add('is-admin');
+                statusBox.textContent = 'Admin Mode: ON';
+                statusBox.className = 'status on';
+            }
+            
+            console.log('Admin mode toggled. body.classList:', Array.from(body.classList));
+            logAdminButtonVisibility();
+        }
+        
+        function logAdminButtonVisibility() {
+            const buttons = document.querySelectorAll('.admin-only');
+            console.log(`Admin-only elements count: ${buttons.length}`);
+            buttons.forEach((btn, i) => {
+                const computed = window.getComputedStyle(btn);
+                console.log(`  Button ${i+1} (${btn.id}): display=${computed.display}, visibility=${computed.visibility}`);
+            });
+        }
+        
+        // Initial check
+        console.log('Page loaded. Initial admin-only visibility:');
+        logAdminButtonVisibility();
+    </script>
+</body>
+</html>
