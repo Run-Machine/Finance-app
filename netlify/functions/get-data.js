@@ -1,8 +1,5 @@
-// Netlify Function: Get persisted app data from Netlify Blobs
-// Public GET endpoint returning JSON
-
-import { getStore } from '@netlify/blobs';
-
+// Removed Netlify blob backend: the project now uses localStorage for persistence
+// This function was disabled per user request. It returns 404 to indicate it's inactive.
 export default async (req, context) => {
   // Set CORS headers for cross-origin requests
   const headers = {
@@ -18,25 +15,5 @@ export default async (req, context) => {
     return new Response(null, { headers, status: 204 });
   }
 
-  try {
-    const store = getStore({
-      name: 'app-data',
-      siteID: context.site?.id || 'local'
-    });
-    
-    const data = await store.get('data.json', { type: 'json' });
-    
-    console.log('GET request - Data retrieved:', data ? 'Found' : 'Empty');
-    
-    return new Response(JSON.stringify({ ok: true, data: data || null }), {
-      headers,
-      status: 200,
-    });
-  } catch (err) {
-    console.error('Blob read error:', err);
-    return new Response(JSON.stringify({ ok: false, error: 'READ_FAILED', message: err.message }), {
-      headers,
-      status: 500,
-    });
-  }
+  return new Response(JSON.stringify({ ok: false, error: 'DISABLED', message: 'Netlify functions removed' }), { headers, status: 404 });
 };

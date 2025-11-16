@@ -1,4 +1,3 @@
-firebase-config.js
 # OS
 .DS_Store
 Thumbs.db
@@ -12,9 +11,9 @@ coverage/
 .env.*
 package-lock.json
 yarn.lock
+supabase-config.js
 
-# Netlify local state
-.netlify/
+ # Netlify local state removed
 
 # Logs
 npm-debug.log*

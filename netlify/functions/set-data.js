@@ -1,8 +1,5 @@
-// Netlify Function: Persist app data to Netlify Blobs
-// Exposes a POST endpoint that accepts full JSON payload
-
-import { getStore } from '@netlify/blobs';
-
+// Removed Netlify blob backend: the project now uses localStorage for persistence
+// This function was disabled per user request. It returns 404 to indicate it's inactive.
 export default async (req, context) => {
   // Set CORS headers
   const headers = {
@@ -18,61 +15,5 @@ export default async (req, context) => {
     return new Response(null, { headers, status: 204 });
   }
 
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ ok: false, error: 'METHOD_NOT_ALLOWED' }), {
-      headers,
-      status: 405,
-    });
-  }
-
-  try {
-    const body = await req.json();
-    if (!body || typeof body !== 'object' || body.data == null) {
-      return new Response(JSON.stringify({ ok: false, error: 'INVALID_PAYLOAD' }), {
-        headers,
-        status: 400,
-      });
-    }
-
-    // Validate data structure has required fields
-    if (!body.data.events || !Array.isArray(body.data.events)) {
-      return new Response(JSON.stringify({ ok: false, error: 'INVALID_DATA_STRUCTURE' }), {
-        headers,
-        status: 400,
-      });
-    }
-
-    const store = getStore({
-      name: 'app-data',
-      siteID: context.site?.id || 'local'
-    });
-    
-    // Ensure a timestamp exists for conflict resolution
-    const payload = { ...body.data };
-    if (typeof payload === 'object' && payload && !payload.__updatedAt) {
-      payload.__updatedAt = Date.now();
-    }
-
-    // Store as JSON string with explicit content type
-    await store.set('data.json', JSON.stringify(payload), {
-      contentType: 'application/json',
-      metadata: {
-        updatedAt: Date.now(),
-        version: body.data.settings?.version || '1.0.0'
-      }
-    });
-
-    console.log('POST request - Data saved successfully');
-
-    return new Response(JSON.stringify({ ok: true, synced: true }), {
-      headers,
-      status: 200,
-    });
-  } catch (err) {
-    console.error('Blob write error:', err);
-    return new Response(JSON.stringify({ ok: false, error: 'WRITE_FAILED', message: err.message }), {
-      headers,
-      status: 500,
-    });
-  }
+  return new Response(JSON.stringify({ ok: false, error: 'DISABLED', message: 'Netlify functions removed' }), { headers, status: 404 });
 };

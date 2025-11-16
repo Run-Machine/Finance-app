@@ -1,14 +1,25 @@
+# Netlify Configuration for Vallamkonda Finance System
 [build]
   publish = "."
-  functions = "netlify/functions"
+  command = ""
 
-# Optional: serve index.html for unknown routes (safe even with hash links)
+# Redirect all requests to index.html for SPA-like behavior
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-# Basic caching headers for static assets
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+
+# Cache static assets for 1 year
 [[headers]]
   for = "/*.css"
   [headers.values]
@@ -19,8 +30,19 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# Avoid caching HTML so updates are visible immediately
 [[headers]]
-  for = "/index.html"
+  for = "/*.png"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.jpg"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# HTML should not be cached
+[[headers]]
+  for = "/*.html"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
